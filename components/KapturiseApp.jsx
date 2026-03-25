@@ -61,6 +61,9 @@ const DEF_CFG=CFG_SALES;
 const agent_cfg_for_role=(r)=>({sales:CFG_SALES,marketing:CFG_MARKETING,account:CFG_ACCOUNT,analytics:CFG_ANALYTICS,investor:CFG_INVESTOR}[r]||CFG_SALES);
 const ROLES={sales:{label:"Sales",color:"br",icon:"🎯",sys:`Sales Agent. ${CTX} Full sales cycle: prospect (Instagram DMs, LinkedIn, Google, directories, events), warm-up (follow, like, comment, story reply), outreach (DM/email/call/voice note), qualify (BANT), discovery calls, proposals, negotiate, close. Instagram engagement and DMs are key sales tools. Use pricing catalog with add-ons. Make cold calls and discovery calls.`},marketing:{label:"Marketing & Content",color:"vi",icon:"📢",sys:`Marketing & Content Agent. ${CTX} Full pipeline: strategy → content creation → design (Nano Banana/Canva) → scheduling → posting on Instagram, Facebook, LinkedIn, TikTok, YouTube → engagement → reporting. Manage @kapturise + client accounts. 3 posts/day. YouTube: long-form videos, Shorts, BTS, testimonials, scripting, thumbnails, SEO, upload scheduling.`},account:{label:"Accounts",color:"em",icon:"🤝",sys:`Account Manager. ${CTX} Onboarding, upsells, retention.`},analytics:{label:"Analytics",color:"sk",icon:"📊",sys:`Analytics. ${CTX} KPIs, reports. AED values.`},investor:{label:"Investor",color:"li",icon:"💰",sys:`Investor Relations. ${CTX} Find investors, pitch.`}};
 
+// ═══ VOICE MAP — OpenAI TTS voice per agent ═══
+const VOICE_MAP={omar:"onyx",sara:"nova",raj:"onyx",noor:"nova",ali:"echo",layla:"shimmer",aiden:"echo",zara:"shimmer",kai:"echo",maya:"nova",ravi:"alloy",mia:"fable",diana:"shimmer",sam:"onyx",alex:"alloy",yara:"fable",marcus:"onyx"};
+
 const INIT_AG=[
   {id:"omar",name:"Omar Al-Rashid",role:"sales",title:"Sr Sales Hunter",av:"👨‍💼",pic:"https://ui-avatars.com/api/?name=Omar+Al-Rashid&background=e8401e&color=fff&size=150&bold=true",eth:"Emirati",bg:"Real Estate & Corporate",status:"active",config:{...DEF_CFG,targeting:{...DEF_CFG.targeting,industries:["Real Estate","Corporates","Events"]},outreachSequence:[{day:1,ch:"LinkedIn",act:"Connect decision maker"},{day:2,ch:"Email",act:"Cold email + portfolio"},{day:3,ch:"Instagram",act:"Follow + like 3"},{day:5,ch:"Phone",act:"Cold call"},{day:7,ch:"Email",act:"Follow-up + case study"},{day:10,ch:"Phone",act:"Follow-up call"},{day:15,ch:"Email",act:"Proposal + retainer"},{day:20,ch:"Phone",act:"Decision push"},{day:30,ch:"Email",act:"Re-engagement"}]}},
   {id:"sara",name:"Sara Kapoor",role:"sales",title:"Social Outreach",av:"👩‍💻",pic:"https://ui-avatars.com/api/?name=Sara+Kapoor&background=ec4899&color=fff&size=150&bold=true",eth:"Indian-Emirati",bg:"F&B & Lifestyle via Instagram",status:"active",config:{...DEF_CFG,targeting:{...DEF_CFG.targeting,industries:["F&B","Ecommerce","Food Aggregators"]},outreachSequence:[{day:1,ch:"Instagram",act:"Like 5 + Follow"},{day:2,ch:"Instagram",act:"Comment on post"},{day:3,ch:"Instagram",act:"Story reply"},{day:4,ch:"Instagram",act:"Opening DM"},{day:5,ch:"Instagram",act:"Portfolio in DM"},{day:7,ch:"Instagram",act:"Voice note"},{day:8,ch:"Email",act:"Formal intro"},{day:10,ch:"Phone",act:"WhatsApp call"},{day:14,ch:"Instagram",act:"New angle DM"},{day:20,ch:"Email",act:"Retainer proposal"}]}},
@@ -158,7 +161,7 @@ export default function App(){
     imageGen:"gemini",      // Image generation provider
     videoGen:"kling",       // Video generation provider
     voice:"elevenlabs",     // Voice generation
-    calls:"bland",          // Phone call provider
+    calls:"vapi",          // Phone call provider
     email:"gmail",          // Email sending provider
     coldEmail:"instantly",  // Cold email at scale
   });
@@ -297,9 +300,10 @@ export default function App(){
     }catch(e){return{error:e.message};}
   }
 
-  // ═══ BLAND.AI PHONE CALLS ═══
-  async function makeCall(phone,script,agentName){
-    if(!apiKeys.bland)return{error:"No Bland.ai API key. Go to Integrations → add your key."};
+  // ═══ PHONE CALLS (Vapi primary, Bland.ai fallback) ═══
+  async function makeCall(phone,script,agentName,agentId){
+    if(apiKeys.vapi){return makeVapiCall(phone,script,agentName,agentId);}
+    if(!apiKeys.bland)return{error:"No Vapi or Bland.ai API key. Go to Integrations → add your key."};
     try{
       const r=await fetch("https://api.bland.ai/v1/calls",{
         method:"POST",headers:{"Authorization":apiKeys.bland,"Content-Type":"application/json"},
@@ -308,6 +312,41 @@ export default function App(){
       const d=await r.json();
       if(d.status==="success"||d.call_id)return{success:true,callId:d.call_id,msg:`Call initiated to ${phone}. Call ID: ${d.call_id}`};
       return{error:d.message||"Call failed"};
+    }catch(e){return{error:e.message};}
+  }
+
+  // ═══ OPENAI TTS — text-to-speech with per-agent voice ═══
+  async function speakText(text,agentId){
+    const voiceName=VOICE_MAP[agentId]||"alloy";
+    const key=apiKeys.openai;
+    if(!key)return{error:"No OpenAI API key. Go to Integrations → add your key."};
+    try{
+      const r=await fetch("https://api.openai.com/v1/audio/speech",{
+        method:"POST",headers:{"Authorization":`Bearer ${key}`,"Content-Type":"application/json"},
+        body:JSON.stringify({model:"tts-1",input:text.slice(0,4096),voice:voiceName,response_format:"mp3"})
+      });
+      if(!r.ok){const e=await r.json();return{error:e.error?.message||"TTS failed"};}
+      const blob=await r.blob();
+      const url=URL.createObjectURL(blob);
+      const audio=new Audio(url);
+      audio.play();
+      return{success:true,url,voice:voiceName};
+    }catch(e){return{error:e.message};}
+  }
+
+  // ═══ VAPI PHONE CALLS ═══
+  async function makeVapiCall(phone,script,agentName,agentId){
+    const key=apiKeys.vapi;
+    if(!key)return{error:"No Vapi API key. Go to Integrations → add your key."};
+    const voiceName=VOICE_MAP[agentId]||"alloy";
+    try{
+      const r=await fetch("https://api.vapi.ai/call/phone",{
+        method:"POST",headers:{"Authorization":`Bearer ${key}`,"Content-Type":"application/json"},
+        body:JSON.stringify({assistantOverrides:{firstMessage:`Hi, this is ${agentName} from Kapturise.`,model:{provider:"openai",model:"gpt-4o",messages:[{role:"system",content:script}]},voice:{provider:"openai",voiceId:voiceName}},customer:{number:phone}})
+      });
+      const d=await r.json();
+      if(d.id)return{success:true,callId:d.id,msg:`Vapi call initiated to ${phone}. Call ID: ${d.id}`};
+      return{error:d.message||JSON.stringify(d)};
     }catch(e){return{error:e.message};}
   }
 
@@ -1650,7 +1689,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
           <div style={{fontSize:9.5,color:T.td,marginTop:6}}>After deployment: connect WhatsApp Business API (via Twilio) in Integrations for automated messaging, templates, and read receipts.</div>
         </div>}
         {loading&&<div style={{...cd,borderColor:`${c}30`}}><span style={{fontSize:12,color:T.ts}}>⏳ Working...</span></div>}
-        {result&&<div ref={ref} style={{...cd,borderColor:`${c}20`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{display:"flex",alignItems:"center",gap:6}}><Av a={agent} size={22} /><span style={{fontSize:12,fontWeight:600}}>Output</span></div><button style={btG(c)} onClick={()=>navigator.clipboard?.writeText(result)}>Copy</button></div>
+        {result&&<div ref={ref} style={{...cd,borderColor:`${c}20`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{display:"flex",alignItems:"center",gap:6}}><Av a={agent} size={22} /><span style={{fontSize:12,fontWeight:600}}>Output</span></div><button style={btG(c)} onClick={()=>navigator.clipboard?.writeText(result)}>Copy</button><button style={{...btG(c),marginLeft:4}} onClick={()=>speakText(result,agent.id)}>🔊 Play</button></div>
           <div style={{background:T.bg,border:`1px solid ${T.bd}`,borderRadius:7,padding:14,fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap",maxHeight:400,overflow:"auto",color:T.ts}}>{result}</div></div>}
       </div>}
 
