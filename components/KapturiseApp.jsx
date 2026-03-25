@@ -451,14 +451,14 @@ export default function App({onSignOut,userEmail}){
     const F2=({label,field,type})=><div style={{marginBottom:8}}>
       <div style={{fontSize:10,color:T.td,marginBottom:3}}>{label}</div>
       {editMode?type==="textarea"
-        ?<textarea style={{...ip,minHeight:60,resize:"vertical"}} value={(editMode&&coDraft?coDraft[field]:company[field])||""} onChange={e=>{const v=e.target.value;setCoDraft(d=>({...d,[field]:v}))}} />
-        :<input style={ip} value={(editMode&&coDraft?coDraft[field]:company[field])||""} onChange={e=>{const v=e.target.value;setCoDraft(d=>({...d,[field]:v}))}} />
+        ?<textarea style={{...ip,minHeight:60,resize:"vertical"}} defaultValue={company[field]||""} data-cofield={field} key={field+(editMode?"e":"v")} />
+        :<input style={ip} defaultValue={company[field]||""} data-cofield={field} key={field+(editMode?"e":"v")} />
       :<div style={{fontSize:12.5,color:T.tx}}>{company[field]||"—"}</div>}
     </div>;
     return <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h2 style={{fontSize:18,fontWeight:700}}>Company Info</h2>
-        <button style={editMode?bt(T.em):btG(T.ts)} onClick={()=>{if(editMode){setCompany(coDraft);setCoDraft(null);setEditMode(false);}else{setCoDraft({...company});setEditMode(true);}}}>{editMode?"Save":"Edit All"}</button>
+        <button style={editMode?bt(T.em):btG(T.ts)} onClick={()=>{if(editMode){const u={};document.querySelectorAll("[data-cofield]").forEach(el=>{u[el.dataset.cofield]=el.value;});setCompany(p=>({...p,...u}));setEditMode(false);}else{setEditMode(true);}}}>{editMode?"Save":"Edit All"}</button>
       </div>
       <div style={{fontSize:12,color:T.ts,marginBottom:14}}>This information is shared with ALL agents via Claude's system prompt. When agents write emails, proposals, or make calls, they reference these details automatically.</div>
 
@@ -495,15 +495,15 @@ export default function App({onSignOut,userEmail}){
     const BF=({label,field,type})=><div style={{marginBottom:8}}>
       <div style={{fontSize:10,color:T.td,marginBottom:3}}>{label}</div>
       {editMode?type==="textarea"
-        ?<textarea style={{...ip,minHeight:60,resize:"vertical"}} value={(editMode&&brDraft?brDraft[field]:brand[field])||""} onChange={e=>{const v=e.target.value;setBrDraft(d=>({...d,[field]:v}))}} />
-        :<input style={ip} value={(editMode&&brDraft?brDraft[field]:brand[field])||""} onChange={e=>{const v=e.target.value;setBrDraft(d=>({...d,[field]:v}))}} />
+        ?<textarea style={{...ip,minHeight:60,resize:"vertical"}} defaultValue={brand[field]||""} data-brfield={field} key={field+(editMode?"e":"v")} />
+        :<input style={ip} defaultValue={brand[field]||""} data-brfield={field} key={field+(editMode?"e":"v")} />
       :<div style={{fontSize:12,color:T.tx,whiteSpace:"pre-wrap",lineHeight:1.6}}>{brand[field]||"—"}</div>}
     </div>;
 
     return <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h2 style={{fontSize:18,fontWeight:700}}>🎨 Brand Guidelines</h2>
-        <button style={editMode?bt(T.em):btG(T.ts)} onClick={()=>{if(editMode){setBrand(brDraft);setBrDraft(null);setEditMode(false);}else{setBrDraft({...brand});setEditMode(true);}}}>{editMode?"Save":"Edit All"}</button>
+        <button style={editMode?bt(T.em):btG(T.ts)} onClick={()=>{if(editMode){const u={};document.querySelectorAll("[data-brfield]").forEach(el=>{u[el.dataset.brfield]=el.value;});setBrand(p=>({...p,...u}));setEditMode(false);}else{setEditMode(true);}}}>{editMode?"Save":"Edit All"}</button>
       </div>
       <div style={{fontSize:12,color:T.ts,marginBottom:14}}>These guidelines are injected into EVERY agent's AI prompt. When Layla writes an Instagram caption, Kai creates a Reel script, or the marketing team generates LinkedIn posts — they all follow these rules automatically.</div>
 
@@ -525,7 +525,7 @@ export default function App({onSignOut,userEmail}){
                   <div><div style={{fontSize:10,fontWeight:600}}>{cl.n}</div><div style={{fontSize:9,color:T.td,fontFamily:F.m}}>{cl.c}</div></div>
                 </div>)}
             </div>
-            {editMode?<textarea style={{...ip,minHeight:50,resize:"vertical"}} value={brand.colors} onChange={e=>{const v=e.target.value;setBrDraft(d=>({...d,colors:v}))}} />
+            {editMode?<textarea style={{...ip,minHeight:50,resize:"vertical"}} defaultValue={brand.colors||""} data-brfield="colors" key={"colors"+(editMode?"e":"v")} />
               :<div style={{fontSize:11.5,color:T.ts}}>{brand.colors}</div>}
             <div style={{fontSize:10,fontWeight:600,color:T.td,marginTop:8,marginBottom:4}}>Fonts</div>
             <div style={{display:"flex",gap:8}}>
@@ -549,15 +549,15 @@ export default function App({onSignOut,userEmail}){
           <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>👤 Founder Profile — {brand.founderName||"[Name]"}</div>
           <div style={{fontSize:10.5,color:T.ts,marginBottom:8}}>This defines who the founder is so agents write personal posts correctly. Critical for LinkedIn and social media where the founder's voice is different from the company.</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-            <div><div style={{fontSize:10,color:T.td,marginBottom:3}}>Name</div>{editMode?<input style={ip} value={(editMode&&brDraft?brDraft.founderName:brand.founderName)||""} onChange={e=>{const v=e.target.value;setBrDraft(d=>({...d,founderName:v}))}} />:<div style={{fontSize:12.5,fontWeight:700}}>{brand.founderName}</div>}</div>
-            <div><div style={{fontSize:10,color:T.td,marginBottom:3}}>Title</div>{editMode?<input style={ip} value={(editMode&&brDraft?brDraft.founderTitle:brand.founderTitle)||""} onChange={e=>{const v=e.target.value;setBrDraft(d=>({...d,founderTitle:v}))}} />:<div style={{fontSize:12.5}}>{brand.founderTitle}</div>}</div>
+            <div><div style={{fontSize:10,color:T.td,marginBottom:3}}>Name</div>{editMode?<input style={ip} defaultValue={brand.founderName||""} data-brfield="founderName" key={"fn"+(editMode?"e":"v")} />:<div style={{fontSize:12.5,fontWeight:700}}>{brand.founderName}</div>}</div>
+            <div><div style={{fontSize:10,color:T.td,marginBottom:3}}>Title</div>{editMode?<input style={ip} defaultValue={brand.founderTitle||""} data-brfield="founderTitle" key={"ft"+(editMode?"e":"v")} />:<div style={{fontSize:12.5}}>{brand.founderTitle}</div>}</div>
           </div>
           <BF label="Bio / Who is the founder? (agents read this before writing personal posts)" field="founderBio" type="textarea" />
           <BF label="Areas of expertise (what topics can the founder speak on?)" field="founderExpertise" type="textarea" />
           <BF label="Posting style (how should the founder's posts sound?)" field="founderStyle" type="textarea" />
           <div style={{background:`${T.rs}10`,borderRadius:7,padding:10,marginTop:6}}>
             <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:4}}>🚫 Founder Do-Nots</div>
-            {editMode?<textarea style={{...ip,minHeight:50,resize:"vertical"}} value={(editMode&&brDraft?brDraft.founderDoNot:brand.founderDoNot)||""} onChange={e=>{const v=e.target.value;setBrDraft(d=>({...d,founderDoNot:v}))}} />
+            {editMode?<textarea style={{...ip,minHeight:50,resize:"vertical"}} defaultValue={brand.founderDoNot||""} data-brfield="founderDoNot" key={"fdn"+(editMode?"e":"v")} />
               :<div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6}}>{brand.founderDoNot}</div>}
           </div>
         </div>
