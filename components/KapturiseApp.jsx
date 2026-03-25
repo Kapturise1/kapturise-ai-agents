@@ -149,7 +149,7 @@ const INIT_SOCIAL=[
 const INIT_CAMPAIGNS=[];
 
 // ═══ APP ═══
-export default function App(){
+export default function App({onSignOut,userEmail}){
   const[theme,setTheme]=useState("dark");
   const[view,setView]=useState("dashboard");
   const[apiKeys,setApiKeys,akOk]=usePersist("k7-ak",{anthropic:"",openai:"",grok:"",deepseek:"",groq:"",gemini:"",dalle:"",midjourney:"",kling:"",runway:"",heygen:"",elevenlabs:"",bland:"",blandPhone:"",vapi:"",twilio:"",retell:"",synthflow:"",gmail:"",instantly:"",sendgrid:"",mailgun:"",resend:"",canva:"",figma:""});
@@ -3374,7 +3374,9 @@ input:focus,select:focus,textarea:focus{border-color:${T.br}!important;box-shado
         <div style={nv(view==="skills",T.ts)} onClick={()=>nav("skills")}><span>🧠</span><span>Skills & API Limits</span></div>
 
         <div style={{marginTop:"auto",padding:10,borderTop:`1px solid ${T.bd}`}}>
-          <div style={{fontSize:8.5,color:T.td,lineHeight:1.5}}>Kapturise · Make it your moment.<br/>Claude AI · Dubai</div>
+          {userEmail&&<div style={{fontSize:9,color:T.td,marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={userEmail}>{userEmail}</div>}
+          {onSignOut&&<div style={{fontSize:10,color:"#ff6b6b",cursor:"pointer",padding:"4px 0"}} onClick={onSignOut}>⏻ Sign Out</div>}
+          <div style={{fontSize:8.5,color:T.td,lineHeight:1.5,marginTop:4}}>Kapturise · Make it your moment.<br/>Claude AI · Dubai</div>
         </div>
       </nav>
 
