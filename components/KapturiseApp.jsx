@@ -154,6 +154,7 @@ export default function App({onSignOut,userEmail}){
   const[view,setView]=useState(()=>{try{return localStorage.getItem("kap_view")||"dashboard";}catch{return "dashboard";}});
   const[coEditMode,setCoEditMode]=useState(false);
   const[brEditMode,setBrEditMode]=useState(false);
+  const[newTheme,setNewTheme]=useState("");
   useEffect(()=>{try{localStorage.setItem("kap_view",view);}catch{}},[view]);
   const[apiKeys,setApiKeys,akOk]=usePersist("k7-ak",{anthropic:"",openai:"",grok:"",deepseek:"",groq:"",gemini:"",dalle:"",midjourney:"",kling:"",runway:"",heygen:"",elevenlabs:"",bland:"",blandPhone:"",vapi:"",twilio:"",retell:"",synthflow:"",gmail:"",instantly:"",sendgrid:"",mailgun:"",resend:"",canva:"",figma:""});
   const[providerPrefs,setProviderPrefs,ppOk]=usePersist("k8-pp",{
@@ -488,7 +489,7 @@ export default function App({onSignOut,userEmail}){
   // ═══ BRAND GUIDELINES & CONTENT STRATEGY ═══
   function BrandPage(){
     const editMode=brEditMode,setEditMode=setBrEditMode;
-    const[newTheme,setNewTheme]=useState("");
+    //newTheme state lifted to parent
     const BF=({label,field,type})=><div style={{marginBottom:8}}>
       <div style={{fontSize:10,color:T.td,marginBottom:3}}>{label}</div>
       {editMode?type==="textarea"
@@ -3207,7 +3208,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
   const render=()=>{
     if(view==="dashboard")return <Dash/>;if(view==="leads")return <CRM/>;if(view==="pricing")return <PricingPage/>;
     if(view==="social")return <SocialPage/>;if(view==="campaigns")return <CampaignsPage/>;if(view==="scripts")return <ScriptsPage/>;if(view==="investors")return <InvestorPipeline/>;if(view==="followups")return <FollowUpPage/>;if(view==="social-outreach")return <SocialOutreachPage/>;if(view==="proposals")return <ProposalsPage/>;if(view==="integrations")return <IntPage/>;
-    if(view==="agents")return <AllAgents/>;if(view==="company")return <CompanyPage/>;if(view==="brand")return <BrandPage/>;if(view==="skills")return <SkillsPage/>;
+    if(view==="agents")return <AllAgents/>;if(view==="company")return {CompanyPage()};if(view==="brand")return {BrandPage()};if(view==="skills")return <SkillsPage/>;
     if(view.startsWith("t:"))return <TeamView role={view.slice(2)}/>;
     if(view.startsWith("a:")){const ag=agents.find(a=>a.id===view.slice(2));if(ag)return <AgentWork agent={ag} agents={agents} setAgents={setAgents} scripts={scripts} isApproached={isApproached} markApproached={markApproached} scoreProspect={scoreProspect} autoCreateFollowUp={autoCreateFollowUp}/>;}return null;
   };
