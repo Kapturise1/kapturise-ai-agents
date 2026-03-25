@@ -3210,7 +3210,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
   const render=()=>{
     if(view==="dashboard")return <Dash/>;if(view==="leads")return <CRM/>;if(view==="pricing")return <PricingPage/>;
     if(view==="social")return <SocialPage/>;if(view==="campaigns")return <CampaignsPage/>;if(view==="scripts")return <ScriptsPage/>;if(view==="investors")return <InvestorPipeline/>;if(view==="followups")return <FollowUpPage/>;if(view==="social-outreach")return <SocialOutreachPage/>;if(view==="proposals")return <ProposalsPage/>;if(view==="integrations")return <IntPage/>;
-    if(view==="agents")return <AllAgents/>;if(view==="company")return {CompanyPage()};if(view==="brand")return {BrandPage()};if(view==="skills")return <SkillsPage/>;
+    if(view==="agents")return <AllAgents/>;if(view==="company")return CompanyPage();if(view==="brand")return BrandPage();if(view==="skills")return <SkillsPage/>;
     if(view.startsWith("t:"))return <TeamView role={view.slice(2)}/>;
     if(view.startsWith("a:")){const ag=agents.find(a=>a.id===view.slice(2));if(ag)return <AgentWork agent={ag} agents={agents} setAgents={setAgents} scripts={scripts} isApproached={isApproached} markApproached={markApproached} scoreProspect={scoreProspect} autoCreateFollowUp={autoCreateFollowUp}/>;}return null;
   };
