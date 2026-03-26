@@ -1374,7 +1374,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
   }
 
   function AgentWork({agent,agents,setAgents,scripts,isApproached,markApproached,scoreProspect,autoCreateFollowUp}){
-    const[tab,setTab]=useState("workflow");const[result,_sr]=useState(_AR[agent.id]||null);const setResult=v=>{const nv=typeof v==="function"?v(result):v;_AR[agent.id]=nv;_sr(nv);};const[loading,_sld]=useState(!!_AR[agent.id+"L"]);const setLoading=v=>{_AR[agent.id+"L"]=v;_sld(v);};const[custom,setCustom]=useState("");const ref=useRef(null);
+    const[tab,setTab]=useState("workflow");const[result,_sr]=useState(_AR[agent.id]||null);const setResult=v=>{if(typeof v==="function"){_sr(prev=>{const nv=v(prev);_AR[agent.id]=nv;return nv;});}else{_AR[agent.id]=v;_sr(v);}};const[loading,_sld]=useState(!!_AR[agent.id+"L"]);const setLoading=v=>{_AR[agent.id+"L"]=v;_sld(v);};const[custom,setCustom]=useState("");const ref=useRef(null);
     const cfg=agent.config||DEF_CFG;const role=ROLES[agent.role]||{};const c=rc(agent.role);
     const chC={Instagram:T.pk,LinkedIn:T.sk,Email:T.br,Phone:T.am,WhatsApp:T.em};
     const pBlock=pricing.map(p=>`${p.icon} ${p.name}: ${p.base} ${p.unit}. Includes: ${p.includes.map(i=>`${i.base} ${i.l}`).join(", ")}. Add-ons: ${p.addons.map(a=>`${a.l} +${a.perUnit}AED`).join(", ")}`).join("\n");
