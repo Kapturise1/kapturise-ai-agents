@@ -1561,7 +1561,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
       {name:"Cold Call Scripts",prompt:"Write cold call scripts for 5 recent prospects. Include: opening hook, SPIN questions, objection handling, booking the meeting. Dubai-specific cultural notes.",onComplete:function(){}},
       {name:"Content Brief for Prospects",prompt:"Create a content brief for Zara (Creative Director): design prospect-specific portfolio pieces, case studies, and social proof content that our sales team can use in outreach. Include visual style suggestions.",onComplete:function(){triggerWorkflow("content","content_brief",{source:"auto_mode"});}},
       {name:"Follow-Up Check",prompt:"Review my pipeline and suggest follow-up actions for leads that haven't responded in 3+ days. Prioritize by deal value. Draft follow-up messages.",onComplete:function(){}}
-    ];const loop=async()=>{if(!agent.autoMode||busy)return;busy=true;const task=tasks[idx%tasks.length];showToast(agent.name+": "+task.name+"...","info");try{await run(task.prompt||task.name,task.name);}catch(e){}idx++;busy=false;};const iv=setInterval(loop,60000);loop();return()=>clearInterval(iv);},[agent.autoMode]);
+    ];const loop=async()=>{if(!agent.autoMode||busy)return;busy=true;const task=tasks[idx%tasks.length];showToast(agent.name+": "+task.name+"...","info");try{await run(task.prompt||task.name,task.name);if(task.onComplete)task.onComplete();}catch(e){}idx++;busy=false;};const iv=setInterval(loop,60000);loop();return()=>clearInterval(iv);},[agent.autoMode]);
 
     const isSales=agent.role==="sales";const isIG=false;const isInvestor=agent.role==="investor";const showProspect=isSales||isInvestor;
 
