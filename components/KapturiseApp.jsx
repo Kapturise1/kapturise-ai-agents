@@ -8,6 +8,69 @@ const AGENT_CONTACTS={omar:{email:"contact+omar@kapturise.com",name:"Omar Al-Ras
 
 const KAPTURISE_PHONE="+971559137354";
 const _agentBus={msgs:[],send(from,to,type,data){const m={id:Date.now(),from,to,type,data,ts:new Date().toISOString(),read:false};this.msgs.push(m);return m;},getFor(agentId){return this.msgs.filter(m=>m.to===agentId||m.to==="all");},unread(agentId){return this.msgs.filter(m=>(m.to===agentId||m.to==="all")&&!m.read).length;},markRead(agentId){this.msgs.filter(m=>m.to===agentId).forEach(m=>m.read=true);}};
+
+// === TEAM WORKFLOW DEFINITIONS ===
+const TEAM_WORKFLOWS={
+  // SALES TEAM: Lead found → research → outreach → call → follow-up
+  sales:{
+    name:"Sales Pipeline",
+    steps:[
+      {trigger:"lead_found",agents:["omar","sara","raj"],action:"Research company and find decision maker",next:"dm_found"},
+      {trigger:"dm_found",agents:["noor"],action:"Verify contact info and qualify lead",next:"qualified"},
+      {trigger:"qualified",agents:["ali"],action:"Generate personalized outreach (email + DM + call script)",next:"outreach_ready"},
+      {trigger:"outreach_ready",agents:["omar","sara","raj"],action:"Execute outreach: send email, DM, schedule call",next:"awaiting_response"},
+      {trigger:"awaiting_response",agents:["noor"],action:"Monitor responses, schedule follow-ups at 3-day intervals",next:"response_received"},
+      {trigger:"response_received",agents:["ali"],action:"Qualify response, prepare proposal if interested",next:"proposal_stage"}
+    ]
+  },
+  // CONTENT TEAM: Brief → research → plan → create → schedule → engage
+  content:{
+    name:"Content Pipeline",
+    steps:[
+      {trigger:"content_brief",agents:["kai"],action:"Research target audience, competitors, trending topics",next:"research_done"},
+      {trigger:"research_done",agents:["zara"],action:"Create 2-week content calendar with post types and themes",next:"calendar_ready"},
+      {trigger:"calendar_ready",agents:["zara"],action:"Design posts: carousels, reels, stories, thumbnails via Nano Banana",next:"assets_created"},
+      {trigger:"assets_created",agents:["layla"],action:"Write captions, hashtags, CTAs for each post",next:"copy_ready"},
+      {trigger:"copy_ready",agents:["aiden"],action:"Schedule posts across platforms (IG, LinkedIn, TikTok, YouTube)",next:"scheduled"},
+      {trigger:"scheduled",agents:["mia"],action:"Monitor engagement, reply to comments, track analytics",next:"engagement_report"},
+      {trigger:"engagement_report",agents:["ravi"],action:"Compile performance report, recommend optimizations",next:"cycle_complete"}
+    ]
+  },
+  // INVESTOR TEAM: Research → pitch → outreach → meeting → DD → close
+  investor:{
+    name:"Investor Pipeline",
+    steps:[
+      {trigger:"investor_identified",agents:["yara"],action:"Research fund thesis, portfolio, check size, partner contacts",next:"investor_qualified"},
+      {trigger:"investor_qualified",agents:["marcus"],action:"Customize pitch deck for this investor's focus areas",next:"pitch_ready"},
+      {trigger:"pitch_ready",agents:["yara"],action:"Send warm intro email + LinkedIn connection + pitch deck",next:"outreach_sent"},
+      {trigger:"outreach_sent",agents:["marcus"],action:"Follow up at 3/7/14 day intervals, track responses",next:"meeting_scheduled"},
+      {trigger:"meeting_scheduled",agents:["yara","marcus"],action:"Prepare meeting brief, practice pitch, ready data room",next:"meeting_done"},
+      {trigger:"meeting_done",agents:["yara"],action:"Send thank-you, provide requested docs, track DD progress",next:"dd_phase"}
+    ]
+  },
+  // CROSS-TEAM: Sales finds lead → Content creates assets → Sales uses in outreach
+  crossTeam:{
+    name:"Cross-Team Handoff",
+    steps:[
+      {trigger:"new_prospect",agents:["zara","kai"],action:"Create prospect-specific content (case study, portfolio piece)",next:"content_for_prospect"},
+      {trigger:"content_for_prospect",agents:["omar","sara","raj"],action:"Include custom content in outreach sequence",next:"enhanced_outreach"},
+      {trigger:"high_value_lead",agents:["yara","marcus"],action:"Flag to investor team if prospect could be strategic partner",next:"investor_review"},
+      {trigger:"client_won",agents:["zara","layla","aiden"],action:"Create client success story, social proof content",next:"success_content"}
+    ]
+  }
+};
+
+function triggerWorkflow(teamId,trigger,data){
+  const wf=TEAM_WORKFLOWS[teamId];
+  if(!wf)return;
+  const step=wf.steps.find(s=>s.trigger===trigger);
+  if(!step)return;
+  step.agents.forEach(agentId=>{
+    _agentBus.send("system",agentId,"workflow",{team:teamId,workflow:wf.name,trigger:trigger,action:step.action,data:data,nextStep:step.next});
+    showToast(wf.name+": "+AGENT_CONTACTS[agentId]?.name+" → "+step.action.substring(0,40)+"...","info");
+  });
+  return step;
+}
 function agentHandoff(fromId,toId,leadData,action){const fromAgent=AGENT_CONTACTS[fromId]||{name:fromId};const toAgent=AGENT_CONTACTS[toId]||{name:toId};_agentBus.send(fromId,toId,"handoff",{lead:leadData,action:action,from:fromAgent.name});showToast(fromAgent.name+" handed off to "+toAgent.name+": "+action,"info");return true;}
 function agentNotify(fromId,toId,message){_agentBus.send(fromId,toId,"notify",{message});return true;}
 
@@ -16,151 +79,151 @@ const LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABDMAAAKKCAYAAAAgIhA8
 const LOGO_DARK = "data:image/png;base64,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";
 const TH={dark:{bg:"#060610",s:"#0a0a16",sa:"#0e0e1c",cd:"#101024",ch:"#16162a",bd:"#1c1c36",tx:"#eeeef8",ts:"#9e9ebb",td:"#58586f",br:"#e8401e",bl:"#ff5a36",em:"#10b981",sk:"#38bdf8",vi:"#8b5cf6",am:"#f59e0b",pk:"#ec4899",cy:"#06b6d4",li:"#84cc16",rs:"#f43f5e"},light:{bg:"#f4f4f9",s:"#fff",sa:"#eeeef5",cd:"#fff",ch:"#f7f7fc",bd:"#dddde8",tx:"#181830",ts:"#55557a",td:"#8888a0",br:"#e8401e",bl:"#ff5a36",em:"#059669",sk:"#0284c7",vi:"#7c3aed",am:"#d97706",pk:"#db2777",cy:"#0891b2",li:"#65a30d",rs:"#e11d48"}};
 const F={d:"'Sora','Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif",m:"'IBM Plex Mono',monospace"};
-const CTX=`Kapturise Ã¢ÂÂ Dubai creative production. "Make it your moment." Services: Photography, Videography, Talent, Content Creation, Social Media Management. Markets: Real Estate, F&B, Events, Corporates, Ecommerce, Food Aggregators. Pitch monthly retainers.`;
+const CTX=`Kapturise — Dubai creative production. "Make it your moment." Services: Photography, Videography, Talent, Content Creation, Social Media Management. Markets: Real Estate, F&B, Events, Corporates, Ecommerce, Food Aggregators. Pitch monthly retainers.`;
 async function callAI(s,m){try{let ak="";try{const stored=await window.storage.get("k7-ak");if(stored)ak=JSON.parse(stored.value).anthropic||"";}catch{}const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4096,system:s,messages:[{role:"user",content:m}],apiKey:ak})});if(!r.ok){const err=await r.text();return`API Error (${r.status}): ${err.slice(0,200)}`;}const d=await r.json();if(d.error)return`API Error: ${d.error.message||JSON.stringify(d.error)}`;const txt=d.content?.map(b=>b.text||"").filter(Boolean).join("\n");return txt||"No response generated. Try again.";}catch(e){return`Connection Error: ${e.message}. Check your internet connection.`;}}
 const STO={async get(k,fb){try{const r=await window.storage.get(k);return r?JSON.parse(r.value):fb;}catch{return fb;}},async set(k,v){try{await window.storage.set(k,JSON.stringify(v));}catch(e){console.error(e);}}};
 function usePersist(k,init){const[d,setD]=useState(init);const[ok,setOk]=useState(false);useEffect(()=>{STO.get(k,init).then(v=>{setD(v);setOk(true);});},[]);const upd=useCallback(fn=>{setD(p=>{const n=typeof fn==="function"?fn(p):fn;STO.set(k,n);return n;});},[k]);return[d,upd,ok];}
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ DYNAMIC PRICING Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ═══ DYNAMIC PRICING ═══
 const INIT_PRICING=[
-  {id:"event",name:"Event Coverage",icon:"Ã°ÂÂÂª",base:3000,unit:"AED",baseHours:4,note:"+VAT. Delivered 24-48hrs.",
+  {id:"event",name:"Event Coverage",icon:"🎪",base:3000,unit:"AED",baseHours:4,note:"+VAT. Delivered 24-48hrs.",
     includes:[{k:"photographers",l:"Photographers",base:1},{k:"videographers",l:"Videographers",base:1},{k:"hours",l:"Hours",base:4},{k:"editedVideos",l:"Edited Videos (60s)",base:1}],
     addons:[{k:"photographers",l:"Extra Photographer",perUnit:1500},{k:"videographers",l:"Extra Videographer",perUnit:1500},{k:"hours",l:"Extra Hour",perUnit:500},{k:"editedVideos",l:"Extra Video (60s)",perUnit:750}]},
-  {id:"food-photo",name:"Food Photography",icon:"Ã°ÂÂÂ¸",base:2500,unit:"AED",baseHours:3,note:"Per session. Includes editing.",
+  {id:"food-photo",name:"Food Photography",icon:"📸",base:2500,unit:"AED",baseHours:3,note:"Per session. Includes editing.",
     includes:[{k:"dishes",l:"Dishes",base:10},{k:"hours",l:"Hours",base:3},{k:"styling",l:"Food Styling",base:1}],
     addons:[{k:"dishes",l:"Extra Dish",perUnit:150},{k:"hours",l:"Extra Hour",perUnit:500},{k:"styling",l:"Extra Styling Setup",perUnit:400}]},
-  {id:"food-video",name:"Food Videography",icon:"Ã°ÂÂÂ¬",base:3500,unit:"AED",baseHours:4,note:"Per session. Editing + music.",
+  {id:"food-video",name:"Food Videography",icon:"🎬",base:3500,unit:"AED",baseHours:4,note:"Per session. Editing + music.",
     includes:[{k:"dishes",l:"Dishes",base:5},{k:"hours",l:"Hours",base:4},{k:"socialClips",l:"Social Clips (15-30s)",base:3}],
     addons:[{k:"dishes",l:"Extra Dish",perUnit:200},{k:"hours",l:"Extra Hour",perUnit:500},{k:"socialClips",l:"Extra Social Clip",perUnit:500},{k:"recipeVideo",l:"Recipe Video (60s+)",perUnit:1000}]},
-  {id:"real-estate",name:"Real Estate Photography",icon:"Ã°ÂÂÂ¢",base:2000,unit:"AED",baseHours:2,note:"Per property.",
+  {id:"real-estate",name:"Real Estate Photography",icon:"🏢",base:2000,unit:"AED",baseHours:2,note:"Per property.",
     includes:[{k:"properties",l:"Properties",base:1},{k:"hours",l:"Hours",base:2},{k:"photos",l:"Edited Photos",base:30}],
-    addons:[{k:"properties",l:"Extra Property",perUnit:1500},{k:"hours",l:"Extra Hour",perUnit:500},{k:"drone",l:"Drone Coverage",perUnit:1000},{k:"timelapse",l:"Timelapse",perUnit:1500},{k:"virtualTour",l:"Virtual Tour (360ÃÂ°)",perUnit:2000}]},
-  {id:"headshots",name:"Corporate Headshots",icon:"Ã°ÂÂÂ",base:3000,unit:"AED",baseHours:3,note:"On-site available.",
+    addons:[{k:"properties",l:"Extra Property",perUnit:1500},{k:"hours",l:"Extra Hour",perUnit:500},{k:"drone",l:"Drone Coverage",perUnit:1000},{k:"timelapse",l:"Timelapse",perUnit:1500},{k:"virtualTour",l:"Virtual Tour (360°)",perUnit:2000}]},
+  {id:"headshots",name:"Corporate Headshots",icon:"👔",base:3000,unit:"AED",baseHours:3,note:"On-site available.",
     includes:[{k:"people",l:"People",base:10},{k:"hours",l:"Hours",base:3},{k:"locations",l:"Locations",base:1}],
     addons:[{k:"people",l:"Extra Person",perUnit:200},{k:"hours",l:"Extra Hour",perUnit:500},{k:"locations",l:"Extra Location",perUnit:1000}]},
-  {id:"product-photo",name:"Product Photography",icon:"Ã°ÂÂÂÃ¯Â¸Â",base:3000,unit:"AED",baseHours:4,note:"Studio or on-location.",
+  {id:"product-photo",name:"Product Photography",icon:"🛍️",base:3000,unit:"AED",baseHours:4,note:"Studio or on-location.",
     includes:[{k:"skus",l:"SKUs",base:20},{k:"hours",l:"Hours",base:4},{k:"angles",l:"Angles per SKU",base:3}],
     addons:[{k:"skus",l:"Extra SKU",perUnit:100},{k:"hours",l:"Extra Hour",perUnit:500},{k:"lifestyle",l:"Lifestyle Shot",perUnit:300}]},
-  {id:"smm",name:"Social Media Management",icon:"Ã°ÂÂÂ±",base:5000,unit:"AED/mo",baseHours:0,note:"Monthly retainer.",
+  {id:"smm",name:"Social Media Management",icon:"📱",base:5000,unit:"AED/mo",baseHours:0,note:"Monthly retainer.",
     includes:[{k:"postsWeek",l:"Posts/Week",base:5},{k:"platforms",l:"Platforms",base:2},{k:"storiesWeek",l:"Stories/Week",base:7},{k:"reelsMonth",l:"Reels/Month",base:4}],
     addons:[{k:"postsWeek",l:"Extra Post/Week",perUnit:200},{k:"platforms",l:"Extra Platform",perUnit:1500},{k:"reelsMonth",l:"Extra Reel/Month",perUnit:400}]},
-  {id:"retainer",name:"Monthly Content Retainer",icon:"Ã°ÂÂÂ",base:8000,unit:"AED/mo",baseHours:0,note:"All-inclusive. Best value.",
+  {id:"retainer",name:"Monthly Content Retainer",icon:"🔄",base:8000,unit:"AED/mo",baseHours:0,note:"All-inclusive. Best value.",
     includes:[{k:"postsMonth",l:"Posts/Month",base:20},{k:"reelsMonth",l:"Reels/Month",base:8},{k:"storiesMonth",l:"Stories/Month",base:30},{k:"smm",l:"Social Media Mgmt",base:1}],
     addons:[{k:"postsMonth",l:"Extra Post",perUnit:150},{k:"reelsMonth",l:"Extra Reel",perUnit:350},{k:"photoshoot",l:"Extra Photo Session",perUnit:2000},{k:"videoshoot",l:"Extra Video Session",perUnit:3000}]},
 ];
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ ROLE-SPECIFIC CONFIGS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-const CFG_SALES={targeting:{industries:["Real Estate","F&B","Events","Corporates","Ecommerce","Food Aggregators"],locations:["Dubai, UAE","Abu Dhabi, UAE","Sharjah, UAE"],professions:["Marketing Director","Brand Manager","Head of Marketing","CMO","Business Owner","Operations Director","HR Director","Content Lead","Event Planner"],signals:["New launch/rebrand","Low-quality content","Hiring marketing","Recently funded","Upcoming events","Aggregator listing","High following poor content"]},dataToCollect:["Company name, industry, size, website","Decision maker: name, title, email, phone","Instagram handle, LinkedIn, follower count","Budget signals, upcoming events, content quality","Current projects & content needs"],outreachSequence:[{day:1,ch:"Instagram",act:"Like 3 posts + Follow"},{day:2,ch:"Instagram",act:"Comment on post"},{day:3,ch:"Instagram",act:"Reply to Story"},{day:4,ch:"Instagram",act:"Opening DM"},{day:5,ch:"LinkedIn",act:"Connection request"},{day:6,ch:"Email",act:"Cold email #1 + portfolio"},{day:7,ch:"Phone",act:"Cold call Ã¢ÂÂ reference email"},{day:8,ch:"Instagram",act:"Follow-up DM"},{day:10,ch:"Phone",act:"Discovery call (15-20 min)"},{day:12,ch:"Email",act:"Email #2 + case study"},{day:14,ch:"Phone",act:"Proposal walkthrough call"},{day:15,ch:"Phone",act:"Follow-up call + voicemail"},{day:20,ch:"Email",act:"Breakup email + offer"},{day:25,ch:"Phone",act:"Final decision call"},{day:30,ch:"Instagram",act:"Re-engagement"}],pipeline:[{stage:"Research",d:"Find + collect data"},{stage:"Warm-Up",d:"Social engagement + first touches"},{stage:"First Contact",d:"Opening DM/email/call"},{stage:"Qualify",d:"BANT assessment Ã¢ÂÂ budget, authority, need, timeline"},{stage:"Discovery Call",d:"15-20 min needs analysis call"},{stage:"Proposal",d:"Send proposal with 3 tiers + retainer"},{stage:"Negotiation",d:"Handle objections, adjust scope/pricing"},{stage:"Close",d:"Contract signed Ã¢ÂÂ onboarding handoff"}],kpis:{daily:[{m:"Leads found/researched",t:20},{m:"Calls made",t:15},{m:"Emails sent",t:20},{m:"DMs sent (IG/LinkedIn)",t:10},{m:"IG warm-up engagements",t:15},{m:"Leads qualified",t:5}],weekly:[{m:"Discovery calls booked",t:8},{m:"Proposals sent",t:5},{m:"Deals closed",t:2},{m:"Pipeline value added (AED)",t:30000}],monthly:[{m:"Total leads generated",t:100},{m:"Leads qualified",t:50},{m:"Total calls made",t:300},{m:"Deals closed",t:8},{m:"Revenue closed (AED)",t:80000},{m:"Retainers signed",t:3}]},pitchFocus:"Monthly retainers + SMM. Entry: event coverage AED 3K+, upsell to retainer. Always ask for referrals."};
+// ═══ ROLE-SPECIFIC CONFIGS ═══
+const CFG_SALES={targeting:{industries:["Real Estate","F&B","Events","Corporates","Ecommerce","Food Aggregators"],locations:["Dubai, UAE","Abu Dhabi, UAE","Sharjah, UAE"],professions:["Marketing Director","Brand Manager","Head of Marketing","CMO","Business Owner","Operations Director","HR Director","Content Lead","Event Planner"],signals:["New launch/rebrand","Low-quality content","Hiring marketing","Recently funded","Upcoming events","Aggregator listing","High following poor content"]},dataToCollect:["Company name, industry, size, website","Decision maker: name, title, email, phone","Instagram handle, LinkedIn, follower count","Budget signals, upcoming events, content quality","Current projects & content needs"],outreachSequence:[{day:1,ch:"Instagram",act:"Like 3 posts + Follow"},{day:2,ch:"Instagram",act:"Comment on post"},{day:3,ch:"Instagram",act:"Reply to Story"},{day:4,ch:"Instagram",act:"Opening DM"},{day:5,ch:"LinkedIn",act:"Connection request"},{day:6,ch:"Email",act:"Cold email #1 + portfolio"},{day:7,ch:"Phone",act:"Cold call — reference email"},{day:8,ch:"Instagram",act:"Follow-up DM"},{day:10,ch:"Phone",act:"Discovery call (15-20 min)"},{day:12,ch:"Email",act:"Email #2 + case study"},{day:14,ch:"Phone",act:"Proposal walkthrough call"},{day:15,ch:"Phone",act:"Follow-up call + voicemail"},{day:20,ch:"Email",act:"Breakup email + offer"},{day:25,ch:"Phone",act:"Final decision call"},{day:30,ch:"Instagram",act:"Re-engagement"}],pipeline:[{stage:"Research",d:"Find + collect data"},{stage:"Warm-Up",d:"Social engagement + first touches"},{stage:"First Contact",d:"Opening DM/email/call"},{stage:"Qualify",d:"BANT assessment — budget, authority, need, timeline"},{stage:"Discovery Call",d:"15-20 min needs analysis call"},{stage:"Proposal",d:"Send proposal with 3 tiers + retainer"},{stage:"Negotiation",d:"Handle objections, adjust scope/pricing"},{stage:"Close",d:"Contract signed → onboarding handoff"}],kpis:{daily:[{m:"Leads found/researched",t:20},{m:"Calls made",t:15},{m:"Emails sent",t:20},{m:"DMs sent (IG/LinkedIn)",t:10},{m:"IG warm-up engagements",t:15},{m:"Leads qualified",t:5}],weekly:[{m:"Discovery calls booked",t:8},{m:"Proposals sent",t:5},{m:"Deals closed",t:2},{m:"Pipeline value added (AED)",t:30000}],monthly:[{m:"Total leads generated",t:100},{m:"Leads qualified",t:50},{m:"Total calls made",t:300},{m:"Deals closed",t:8},{m:"Revenue closed (AED)",t:80000},{m:"Retainers signed",t:3}]},pitchFocus:"Monthly retainers + SMM. Entry: event coverage AED 3K+, upsell to retainer. Always ask for referrals."};
 
-// CFG_PHONE merged into CFG_SALES Ã¢ÂÂ phone is a sales tool, not a department
-const CFG_MARKETING={targeting:{industries:["All Kapturise target industries"],locations:["Dubai, UAE","Abu Dhabi, UAE","GCC region"],professions:["Target audience: business owners, marketing managers, event planners, F&B owners in Dubai"],signals:["Trending topics in Dubai","Industry events coming up","Seasonal campaigns (Ramadan, DSF, National Day)","Competitor activity","Client milestones","Trending Reel audio/format","Low engagement week Ã¢ÂÂ need content push"]},dataToCollect:["Platform analytics (reach, engagement, followers)","Content performance per post","Best posting times by platform","Competitor content analysis","Trending hashtags and audio","Brand guidelines per client","Approved messaging/taglines"],outreachSequence:[{day:1,ch:"Instagram",act:"Publish morning post (9AM) + Stories"},{day:1,ch:"Facebook",act:"Adapt + post to FB page"},{day:1,ch:"LinkedIn",act:"Publish professional version"},{day:1,ch:"Instagram",act:"Afternoon post (1PM)"},{day:1,ch:"Instagram",act:"Evening post (7PM) + Reel"},{day:2,ch:"Instagram",act:"Engage with 20 comments on posts"},{day:2,ch:"TikTok",act:"Post adapted short-form content"},{day:3,ch:"Instagram",act:"Reply to all DMs and comments"},{day:5,ch:"Instagram",act:"Carousel or educational content"},{day:7,ch:"Email",act:"Send weekly newsletter to subscribers"}],pipeline:[{stage:"Strategy",d:"Define weekly theme + content calendar"},{stage:"Research",d:"Trend research, hashtags, competitor analysis"},{stage:"Create",d:"Design visuals (Nano Banana/Canva) + write copy"},{stage:"Review",d:"Quality check, brand consistency"},{stage:"Schedule",d:"Queue across IG, FB, LinkedIn, TikTok"},{stage:"Publish",d:"Post at 9AM / 1PM / 7PM Dubai time"},{stage:"Engage",d:"Reply to comments, DMs, shares"},{stage:"Analyze",d:"Track metrics, report, optimize"}],kpis:{daily:[{m:"Posts published (IG+FB+LI)",t:3},{m:"Stories created",t:5},{m:"Comments replied",t:20},{m:"Designs created (Nano Banana)",t:3}],weekly:[{m:"Reels/TikToks produced",t:4},{m:"Carousels designed",t:3},{m:"Blog/newsletter",t:1},{m:"Client content pieces",t:5},{m:"Nano Banana images generated",t:10}],monthly:[{m:"Follower growth (%)",t:5},{m:"Engagement rate (%)",t:4},{m:"Leads from content",t:15},{m:"Campaigns launched",t:2},{m:"Total posts published",t:90}]},pitchFocus:"Build Kapturise brand across IG, FB, LinkedIn, TikTok. Drive inbound leads. 3 posts/day. Nano Banana for image creation."};
+// CFG_PHONE merged into CFG_SALES — phone is a sales tool, not a department
+const CFG_MARKETING={targeting:{industries:["All Kapturise target industries"],locations:["Dubai, UAE","Abu Dhabi, UAE","GCC region"],professions:["Target audience: business owners, marketing managers, event planners, F&B owners in Dubai"],signals:["Trending topics in Dubai","Industry events coming up","Seasonal campaigns (Ramadan, DSF, National Day)","Competitor activity","Client milestones","Trending Reel audio/format","Low engagement week — need content push"]},dataToCollect:["Platform analytics (reach, engagement, followers)","Content performance per post","Best posting times by platform","Competitor content analysis","Trending hashtags and audio","Brand guidelines per client","Approved messaging/taglines"],outreachSequence:[{day:1,ch:"Instagram",act:"Publish morning post (9AM) + Stories"},{day:1,ch:"Facebook",act:"Adapt + post to FB page"},{day:1,ch:"LinkedIn",act:"Publish professional version"},{day:1,ch:"Instagram",act:"Afternoon post (1PM)"},{day:1,ch:"Instagram",act:"Evening post (7PM) + Reel"},{day:2,ch:"Instagram",act:"Engage with 20 comments on posts"},{day:2,ch:"TikTok",act:"Post adapted short-form content"},{day:3,ch:"Instagram",act:"Reply to all DMs and comments"},{day:5,ch:"Instagram",act:"Carousel or educational content"},{day:7,ch:"Email",act:"Send weekly newsletter to subscribers"}],pipeline:[{stage:"Strategy",d:"Define weekly theme + content calendar"},{stage:"Research",d:"Trend research, hashtags, competitor analysis"},{stage:"Create",d:"Design visuals (Nano Banana/Canva) + write copy"},{stage:"Review",d:"Quality check, brand consistency"},{stage:"Schedule",d:"Queue across IG, FB, LinkedIn, TikTok"},{stage:"Publish",d:"Post at 9AM / 1PM / 7PM Dubai time"},{stage:"Engage",d:"Reply to comments, DMs, shares"},{stage:"Analyze",d:"Track metrics, report, optimize"}],kpis:{daily:[{m:"Posts published (IG+FB+LI)",t:3},{m:"Stories created",t:5},{m:"Comments replied",t:20},{m:"Designs created (Nano Banana)",t:3}],weekly:[{m:"Reels/TikToks produced",t:4},{m:"Carousels designed",t:3},{m:"Blog/newsletter",t:1},{m:"Client content pieces",t:5},{m:"Nano Banana images generated",t:10}],monthly:[{m:"Follower growth (%)",t:5},{m:"Engagement rate (%)",t:4},{m:"Leads from content",t:15},{m:"Campaigns launched",t:2},{m:"Total posts published",t:90}]},pitchFocus:"Build Kapturise brand across IG, FB, LinkedIn, TikTok. Drive inbound leads. 3 posts/day. Nano Banana for image creation."};
 
-const CFG_INSTAGRAM={targeting:{industries:["F&B","Ecommerce","Lifestyle","Events","Real Estate"],locations:["Dubai, UAE","Dubai Marina","JBR","DIFC","Downtown Dubai","Business Bay"],professions:["Instagram Manager","Social Media Manager","Business Owner","Brand Manager","Marketing Coordinator"],signals:["Low-quality photos on feed","Reposting user content (no professional)","Low engagement despite followers","No recent Reels","Hiring social media roles","New location opened"]},dataToCollect:["Instagram handle + follower count","Engagement rate (likes/comments ratio)","Content quality score (1-10)","Post frequency","Last Reel date","Bio link + website"],outreachSequence:[{day:1,ch:"Instagram",act:"Like 5 posts + Follow + View all Stories"},{day:2,ch:"Instagram",act:"Leave genuine comment on latest post"},{day:3,ch:"Instagram",act:"Reply to their Story with compliment"},{day:4,ch:"Instagram",act:"Send opening DM (under 3 sentences)"},{day:5,ch:"Instagram",act:"Share relevant portfolio piece in DM"},{day:7,ch:"Instagram",act:"Voice note follow-up if no reply"},{day:10,ch:"Instagram",act:"Comment on another post + new DM angle"},{day:14,ch:"Instagram",act:"Tag them in a relevant Story"},{day:21,ch:"Instagram",act:"Re-engagement DM with new offer"}],pipeline:[{stage:"Identify",d:"Find target accounts via hashtags/location"},{stage:"Warm-Up",d:"Like, comment, follow for 3 days"},{stage:"DM Open",d:"Send opening DM"},{stage:"Conversation",d:"Build rapport in DMs"},{stage:"Portfolio Share",d:"Send relevant work samples"},{stage:"Interest",d:"They ask for pricing/details"},{stage:"Handoff",d:"Move to WhatsApp/call with sales agent"}],kpis:{daily:[{m:"Accounts engaged",t:15},{m:"Comments left",t:10},{m:"DMs sent",t:8},{m:"Story replies",t:5},{m:"Voice notes sent",t:3}],weekly:[{m:"New conversations started",t:20},{m:"Prospects moved to interest",t:5},{m:"Handoffs to sales",t:3}],monthly:[{m:"Total DM conversations",t:80},{m:"Leads generated",t:15},{m:"Follower growth (Kapturise)",t:500}]},pitchFocus:"Warm up prospects on Instagram before handing to sales. Never sell directly Ã¢ÂÂ build relationship first."};
+const CFG_INSTAGRAM={targeting:{industries:["F&B","Ecommerce","Lifestyle","Events","Real Estate"],locations:["Dubai, UAE","Dubai Marina","JBR","DIFC","Downtown Dubai","Business Bay"],professions:["Instagram Manager","Social Media Manager","Business Owner","Brand Manager","Marketing Coordinator"],signals:["Low-quality photos on feed","Reposting user content (no professional)","Low engagement despite followers","No recent Reels","Hiring social media roles","New location opened"]},dataToCollect:["Instagram handle + follower count","Engagement rate (likes/comments ratio)","Content quality score (1-10)","Post frequency","Last Reel date","Bio link + website"],outreachSequence:[{day:1,ch:"Instagram",act:"Like 5 posts + Follow + View all Stories"},{day:2,ch:"Instagram",act:"Leave genuine comment on latest post"},{day:3,ch:"Instagram",act:"Reply to their Story with compliment"},{day:4,ch:"Instagram",act:"Send opening DM (under 3 sentences)"},{day:5,ch:"Instagram",act:"Share relevant portfolio piece in DM"},{day:7,ch:"Instagram",act:"Voice note follow-up if no reply"},{day:10,ch:"Instagram",act:"Comment on another post + new DM angle"},{day:14,ch:"Instagram",act:"Tag them in a relevant Story"},{day:21,ch:"Instagram",act:"Re-engagement DM with new offer"}],pipeline:[{stage:"Identify",d:"Find target accounts via hashtags/location"},{stage:"Warm-Up",d:"Like, comment, follow for 3 days"},{stage:"DM Open",d:"Send opening DM"},{stage:"Conversation",d:"Build rapport in DMs"},{stage:"Portfolio Share",d:"Send relevant work samples"},{stage:"Interest",d:"They ask for pricing/details"},{stage:"Handoff",d:"Move to WhatsApp/call with sales agent"}],kpis:{daily:[{m:"Accounts engaged",t:15},{m:"Comments left",t:10},{m:"DMs sent",t:8},{m:"Story replies",t:5},{m:"Voice notes sent",t:3}],weekly:[{m:"New conversations started",t:20},{m:"Prospects moved to interest",t:5},{m:"Handoffs to sales",t:3}],monthly:[{m:"Total DM conversations",t:80},{m:"Leads generated",t:15},{m:"Follower growth (Kapturise)",t:500}]},pitchFocus:"Warm up prospects on Instagram before handing to sales. Never sell directly — build relationship first."};
 
-// CFG_PHONE removed Ã¢ÂÂ merged into sales
+// CFG_PHONE removed — merged into sales
 
 // CFG_CONTENT merged into CFG_MARKETING above
 
-const CFG_YOUTUBE={targeting:{industries:["All Ã¢ÂÂ YouTube content showcases all services"],locations:["Dubai, UAE","GCC region (audience)"],professions:["N/A Ã¢ÂÂ YouTube team creates and publishes"],signals:["Client shoot completed (BTS available)","Trending topic in creative/photography space","Milestone reached (client count, project)","New service launched","Event season approaching"]},dataToCollect:["Video topic + keyword research","Competitor video analysis (views, engagement)","YouTube trending topics in UAE","SEO keywords for titles/descriptions","Thumbnail click-through benchmarks"],outreachSequence:[{day:1,ch:"YouTube",act:"Publish long-form video (Tue/Thu 4PM)"},{day:1,ch:"YouTube",act:"Post YouTube Short from video clips"},{day:2,ch:"YouTube",act:"Reply to all comments"},{day:3,ch:"YouTube",act:"Post another Short (different angle)"},{day:5,ch:"Instagram",act:"Cross-promote: Reel teaser Ã¢ÂÂ YouTube link"},{day:5,ch:"LinkedIn",act:"Share video insight as LinkedIn post"},{day:7,ch:"YouTube",act:"Community post: poll or behind-the-scenes"}],pipeline:[{stage:"Ideation",d:"Topic research + script outline"},{stage:"Script",d:"Write full script + shot list"},{stage:"Film",d:"Shoot footage (BTS, tutorials, showcases)"},{stage:"Edit",d:"Edit video + add graphics/music"},{stage:"Thumbnail",d:"Design click-worthy thumbnail"},{stage:"SEO",d:"Write title, description, tags"},{stage:"Publish",d:"Upload + schedule"},{stage:"Promote",d:"Cross-post clips to IG/TikTok/LinkedIn"}],kpis:{daily:[{m:"YouTube Shorts published",t:1},{m:"Comments replied",t:10},{m:"Cross-platform clips posted",t:2}],weekly:[{m:"Long-form videos published",t:2},{m:"Shorts published",t:5},{m:"Community posts",t:3},{m:"Thumbnails designed",t:2}],monthly:[{m:"Total views",t:10000},{m:"Subscriber growth",t:200},{m:"Watch time (hours)",t:500},{m:"Leads from YouTube",t:5}]},pitchFocus:"Grow Kapturise YouTube. Show expertise, attract clients through educational + portfolio content."};
+const CFG_YOUTUBE={targeting:{industries:["All — YouTube content showcases all services"],locations:["Dubai, UAE","GCC region (audience)"],professions:["N/A — YouTube team creates and publishes"],signals:["Client shoot completed (BTS available)","Trending topic in creative/photography space","Milestone reached (client count, project)","New service launched","Event season approaching"]},dataToCollect:["Video topic + keyword research","Competitor video analysis (views, engagement)","YouTube trending topics in UAE","SEO keywords for titles/descriptions","Thumbnail click-through benchmarks"],outreachSequence:[{day:1,ch:"YouTube",act:"Publish long-form video (Tue/Thu 4PM)"},{day:1,ch:"YouTube",act:"Post YouTube Short from video clips"},{day:2,ch:"YouTube",act:"Reply to all comments"},{day:3,ch:"YouTube",act:"Post another Short (different angle)"},{day:5,ch:"Instagram",act:"Cross-promote: Reel teaser → YouTube link"},{day:5,ch:"LinkedIn",act:"Share video insight as LinkedIn post"},{day:7,ch:"YouTube",act:"Community post: poll or behind-the-scenes"}],pipeline:[{stage:"Ideation",d:"Topic research + script outline"},{stage:"Script",d:"Write full script + shot list"},{stage:"Film",d:"Shoot footage (BTS, tutorials, showcases)"},{stage:"Edit",d:"Edit video + add graphics/music"},{stage:"Thumbnail",d:"Design click-worthy thumbnail"},{stage:"SEO",d:"Write title, description, tags"},{stage:"Publish",d:"Upload + schedule"},{stage:"Promote",d:"Cross-post clips to IG/TikTok/LinkedIn"}],kpis:{daily:[{m:"YouTube Shorts published",t:1},{m:"Comments replied",t:10},{m:"Cross-platform clips posted",t:2}],weekly:[{m:"Long-form videos published",t:2},{m:"Shorts published",t:5},{m:"Community posts",t:3},{m:"Thumbnails designed",t:2}],monthly:[{m:"Total views",t:10000},{m:"Subscriber growth",t:200},{m:"Watch time (hours)",t:500},{m:"Leads from YouTube",t:5}]},pitchFocus:"Grow Kapturise YouTube. Show expertise, attract clients through educational + portfolio content."};
 
-const CFG_ACCOUNT={targeting:{industries:["All existing Kapturise clients"],locations:["Dubai, UAE","Abu Dhabi, UAE"],professions:["Marketing Director","Brand Manager","Business Owner","Procurement Manager","Office Manager","HR Director"],signals:["Project just delivered","30 days since last contact","Contract renewal approaching","Client posted our work on social","Client has upcoming event","NPS survey due","Payment overdue"]},dataToCollect:["Client satisfaction score (1-10)","Last contact date + channel","Project history + total spend","Upsell opportunities identified","Contract renewal date","Referral potential"],outreachSequence:[{day:1,ch:"Email",act:"Post-delivery follow-up (48hrs after)"},{day:7,ch:"WhatsApp",act:"Quick check-in: 'How are the photos performing?'"},{day:14,ch:"Email",act:"Share performance tips for their content"},{day:30,ch:"Email",act:"Monthly relationship check-in"},{day:60,ch:"Phone",act:"Quarterly business review call"},{day:90,ch:"Email",act:"Contract renewal / upsell proposal"}],pipeline:[{stage:"Onboarding",d:"Welcome + kickoff meeting"},{stage:"Active Project",d:"Shoot in progress or editing"},{stage:"Delivered",d:"Content delivered, awaiting feedback"},{stage:"Follow-Up",d:"Post-delivery check-in"},{stage:"Happy Client",d:"Satisfied, potential referral"},{stage:"Upsell",d:"Pitching additional services"},{stage:"Renewal",d:"Contract renewal discussion"},{stage:"At Risk",d:"Unhappy or going quiet Ã¢ÂÂ save"}],kpis:{daily:[{m:"Client check-ins",t:3},{m:"Feedback requests sent",t:2},{m:"Issues resolved",t:1}],weekly:[{m:"Upsell conversations",t:2},{m:"Referral asks",t:3},{m:"NPS surveys sent",t:5}],monthly:[{m:"Client retention rate (%)",t:95},{m:"Upsell revenue (AED)",t:20000},{m:"Referrals received",t:3},{m:"NPS score (avg)",t:9}]},pitchFocus:"Keep clients for life. Premium service. Every client feels like the only client."};
+const CFG_ACCOUNT={targeting:{industries:["All existing Kapturise clients"],locations:["Dubai, UAE","Abu Dhabi, UAE"],professions:["Marketing Director","Brand Manager","Business Owner","Procurement Manager","Office Manager","HR Director"],signals:["Project just delivered","30 days since last contact","Contract renewal approaching","Client posted our work on social","Client has upcoming event","NPS survey due","Payment overdue"]},dataToCollect:["Client satisfaction score (1-10)","Last contact date + channel","Project history + total spend","Upsell opportunities identified","Contract renewal date","Referral potential"],outreachSequence:[{day:1,ch:"Email",act:"Post-delivery follow-up (48hrs after)"},{day:7,ch:"WhatsApp",act:"Quick check-in: 'How are the photos performing?'"},{day:14,ch:"Email",act:"Share performance tips for their content"},{day:30,ch:"Email",act:"Monthly relationship check-in"},{day:60,ch:"Phone",act:"Quarterly business review call"},{day:90,ch:"Email",act:"Contract renewal / upsell proposal"}],pipeline:[{stage:"Onboarding",d:"Welcome + kickoff meeting"},{stage:"Active Project",d:"Shoot in progress or editing"},{stage:"Delivered",d:"Content delivered, awaiting feedback"},{stage:"Follow-Up",d:"Post-delivery check-in"},{stage:"Happy Client",d:"Satisfied, potential referral"},{stage:"Upsell",d:"Pitching additional services"},{stage:"Renewal",d:"Contract renewal discussion"},{stage:"At Risk",d:"Unhappy or going quiet — save"}],kpis:{daily:[{m:"Client check-ins",t:3},{m:"Feedback requests sent",t:2},{m:"Issues resolved",t:1}],weekly:[{m:"Upsell conversations",t:2},{m:"Referral asks",t:3},{m:"NPS surveys sent",t:5}],monthly:[{m:"Client retention rate (%)",t:95},{m:"Upsell revenue (AED)",t:20000},{m:"Referrals received",t:3},{m:"NPS score (avg)",t:9}]},pitchFocus:"Keep clients for life. Premium service. Every client feels like the only client."};
 
-const CFG_ANALYTICS={targeting:{industries:["Internal Ã¢ÂÂ all Kapturise operations"],locations:["N/A"],professions:["N/A Ã¢ÂÂ reports to founder"],signals:["Week ended (weekly report due)","Month ended (monthly report due)","KPI target missed","Revenue milestone hit","Campaign completed"]},dataToCollect:["Revenue by service type","Pipeline value by stage","Agent performance metrics","Content engagement rates","Client retention/churn data","Cost per lead by channel"],outreachSequence:[{day:1,ch:"Email",act:"Daily KPI snapshot to founder"},{day:7,ch:"Email",act:"Weekly performance report"},{day:30,ch:"Email",act:"Monthly business review"}],pipeline:[{stage:"Data Collection",d:"Gather metrics from all agents"},{stage:"Analysis",d:"Identify trends and anomalies"},{stage:"Report",d:"Generate formatted report"},{stage:"Insights",d:"Extract actionable recommendations"},{stage:"Present",d:"Share with founder"},{stage:"Implement",d:"Track action items from report"}],kpis:{daily:[{m:"Reports generated",t:1},{m:"Anomalies flagged",t:2}],weekly:[{m:"Weekly report delivered",t:1},{m:"Agent performance reviews",t:3}],monthly:[{m:"Monthly business review",t:1},{m:"Revenue forecast accuracy (%)",t:90},{m:"Optimization recommendations",t:5}]},pitchFocus:"Data-driven decisions. Track everything. Optimize for revenue and efficiency."};
+const CFG_ANALYTICS={targeting:{industries:["Internal — all Kapturise operations"],locations:["N/A"],professions:["N/A — reports to founder"],signals:["Week ended (weekly report due)","Month ended (monthly report due)","KPI target missed","Revenue milestone hit","Campaign completed"]},dataToCollect:["Revenue by service type","Pipeline value by stage","Agent performance metrics","Content engagement rates","Client retention/churn data","Cost per lead by channel"],outreachSequence:[{day:1,ch:"Email",act:"Daily KPI snapshot to founder"},{day:7,ch:"Email",act:"Weekly performance report"},{day:30,ch:"Email",act:"Monthly business review"}],pipeline:[{stage:"Data Collection",d:"Gather metrics from all agents"},{stage:"Analysis",d:"Identify trends and anomalies"},{stage:"Report",d:"Generate formatted report"},{stage:"Insights",d:"Extract actionable recommendations"},{stage:"Present",d:"Share with founder"},{stage:"Implement",d:"Track action items from report"}],kpis:{daily:[{m:"Reports generated",t:1},{m:"Anomalies flagged",t:2}],weekly:[{m:"Weekly report delivered",t:1},{m:"Agent performance reviews",t:3}],monthly:[{m:"Monthly business review",t:1},{m:"Revenue forecast accuracy (%)",t:90},{m:"Optimization recommendations",t:5}]},pitchFocus:"Data-driven decisions. Track everything. Optimize for revenue and efficiency."};
 
 const CFG_INVESTOR={targeting:{industries:["Venture Capital","Angel Investing","Family Offices","Accelerators","Strategic investors (media/tech)"],locations:["Dubai, UAE (DIFC)","Abu Dhabi (Hub71, ADGM)","Riyadh, Saudi Arabia","London, UK","New York, USA"],professions:["VC Partner","Managing Director","Investment Manager","Angel Investor","Family Office Principal","Accelerator Director"],signals:["Fund just closed new fund","Invested in similar sector (media/creative/SaaS)","Speaking at tech event in Dubai","Connected to our network","Published about creator economy"]},dataToCollect:["Fund name, size, stage focus","Investment thesis + sector focus","Typical check size (AED/USD)","Portfolio companies (similar to Kapturise)","Partner name, email, LinkedIn","Last investment date"],outreachSequence:[{day:1,ch:"LinkedIn",act:"Connect with personalized note"},{day:3,ch:"Email",act:"Warm intro email with 1-page pitch"},{day:7,ch:"LinkedIn",act:"Share Kapturise milestone/content"},{day:10,ch:"Email",act:"Follow-up with traction data"},{day:14,ch:"Phone",act:"Request 15-min intro call"},{day:21,ch:"Email",act:"Send full pitch deck"},{day:30,ch:"Email",act:"Monthly investor update"}],pipeline:[{stage:"Research",d:"Identify + qualify investor"},{stage:"Connect",d:"LinkedIn connection or warm intro"},{stage:"Pitch",d:"Send 1-pager or deck"},{stage:"Meeting",d:"Intro call or in-person"},{stage:"Due Diligence",d:"Sharing detailed info"},{stage:"Term Sheet",d:"Negotiating terms"},{stage:"Close",d:"Investment closed"}],kpis:{daily:[{m:"Investors researched",t:3},{m:"Outreach messages sent",t:5}],weekly:[{m:"Investor meetings",t:2},{m:"Pitch decks sent",t:3},{m:"Warm intros received",t:1}],monthly:[{m:"Active investor conversations",t:10},{m:"Term sheet discussions",t:1},{m:"Investor updates sent",t:1}]},pitchFocus:"Kapturise: AI-powered creative agency. Scalable model. Recurring revenue. Dubai market leader."};
 
 const DEF_CFG=CFG_SALES;
 const agent_cfg_for_role=(r)=>({sales:CFG_SALES,marketing:CFG_MARKETING,account:CFG_ACCOUNT,analytics:CFG_ANALYTICS,investor:CFG_INVESTOR}[r]||CFG_SALES);
-const ROLES={sales:{label:"Sales",color:"br",icon:"Ã°ÂÂÂ¯",sys:`Sales Agent. ${CTX} Full sales cycle: prospect (Instagram DMs, LinkedIn, Google, directories, events), warm-up (follow, like, comment, story reply), outreach (DM/email/call/voice note), qualify (BANT), discovery calls, proposals, negotiate, close. Instagram engagement and DMs are key sales tools. Use pricing catalog with add-ons. Make cold calls and discovery calls.`},marketing:{label:"Marketing & Content",color:"vi",icon:"Ã°ÂÂÂ¢",sys:`Marketing & Content Agent. ${CTX} Full pipeline: strategy Ã¢ÂÂ content creation Ã¢ÂÂ design (Nano Banana/Canva) Ã¢ÂÂ scheduling Ã¢ÂÂ posting on Instagram, Facebook, LinkedIn, TikTok, YouTube Ã¢ÂÂ engagement Ã¢ÂÂ reporting. Manage @kapturise + client accounts. 3 posts/day. YouTube: long-form videos, Shorts, BTS, testimonials, scripting, thumbnails, SEO, upload scheduling.`},account:{label:"Accounts",color:"em",icon:"Ã°ÂÂ¤Â",sys:`Account Manager. ${CTX} Onboarding, upsells, retention.`},analytics:{label:"Analytics",color:"sk",icon:"Ã°ÂÂÂ",sys:`Analytics. ${CTX} KPIs, reports. AED values.`},investor:{label:"Investor",color:"li",icon:"Ã°ÂÂÂ°",sys:`Investor Relations. ${CTX} Find investors, pitch.`}};
+const ROLES={sales:{label:"Sales",color:"br",icon:"🎯",sys:`Sales Agent. ${CTX} Full sales cycle: prospect (Instagram DMs, LinkedIn, Google, directories, events), warm-up (follow, like, comment, story reply), outreach (DM/email/call/voice note), qualify (BANT), discovery calls, proposals, negotiate, close. Instagram engagement and DMs are key sales tools. Use pricing catalog with add-ons. Make cold calls and discovery calls.`},marketing:{label:"Marketing & Content",color:"vi",icon:"📢",sys:`Marketing & Content Agent. ${CTX} Full pipeline: strategy → content creation → design (Nano Banana/Canva) → scheduling → posting on Instagram, Facebook, LinkedIn, TikTok, YouTube → engagement → reporting. Manage @kapturise + client accounts. 3 posts/day. YouTube: long-form videos, Shorts, BTS, testimonials, scripting, thumbnails, SEO, upload scheduling.`},account:{label:"Accounts",color:"em",icon:"🤝",sys:`Account Manager. ${CTX} Onboarding, upsells, retention.`},analytics:{label:"Analytics",color:"sk",icon:"📊",sys:`Analytics. ${CTX} KPIs, reports. AED values.`},investor:{label:"Investor",color:"li",icon:"💰",sys:`Investor Relations. ${CTX} Find investors, pitch.`}};
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ VOICE MAP Ã¢ÂÂ OpenAI TTS voice per agent Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ═══ VOICE MAP — OpenAI TTS voice per agent ═══
 const VOICE_MAP={omar:"onyx",sara:"nova",raj:"onyx",noor:"nova",ali:"echo",layla:"shimmer",aiden:"echo",zara:"shimmer",kai:"echo",maya:"nova",ravi:"alloy",mia:"fable",diana:"shimmer",sam:"onyx",alex:"alloy",yara:"fable",marcus:"onyx"};
 
 const INIT_AG=[
-  {id:"omar",name:"Omar Al-Rashid",role:"sales",title:"Sr Sales Hunter",av:"Ã°ÂÂÂ¨Ã¢ÂÂÃ°ÂÂÂ¼",pic:"https://ui-avatars.com/api/?name=Omar+Al-Rashid&background=e8401e&color=fff&size=150&bold=true",eth:"Emirati",bg:"Real Estate & Corporate",status:"active",config:{...DEF_CFG,targeting:{...DEF_CFG.targeting,industries:["Real Estate","Corporates","Events"]},outreachSequence:[{day:1,ch:"LinkedIn",act:"Connect decision maker"},{day:2,ch:"Email",act:"Cold email + portfolio"},{day:3,ch:"Instagram",act:"Follow + like 3"},{day:5,ch:"Phone",act:"Cold call"},{day:7,ch:"Email",act:"Follow-up + case study"},{day:10,ch:"Phone",act:"Follow-up call"},{day:15,ch:"Email",act:"Proposal + retainer"},{day:20,ch:"Phone",act:"Decision push"},{day:30,ch:"Email",act:"Re-engagement"}]}},
-  {id:"sara",name:"Sara Kapoor",role:"sales",title:"Social Outreach",av:"Ã°ÂÂÂ©Ã¢ÂÂÃ°ÂÂÂ»",pic:"https://ui-avatars.com/api/?name=Sara+Kapoor&background=ec4899&color=fff&size=150&bold=true",eth:"Indian-Emirati",bg:"F&B & Lifestyle via Instagram",status:"active",config:{...DEF_CFG,targeting:{...DEF_CFG.targeting,industries:["F&B","Ecommerce","Food Aggregators"]},outreachSequence:[{day:1,ch:"Instagram",act:"Like 5 + Follow"},{day:2,ch:"Instagram",act:"Comment on post"},{day:3,ch:"Instagram",act:"Story reply"},{day:4,ch:"Instagram",act:"Opening DM"},{day:5,ch:"Instagram",act:"Portfolio in DM"},{day:7,ch:"Instagram",act:"Voice note"},{day:8,ch:"Email",act:"Formal intro"},{day:10,ch:"Phone",act:"WhatsApp call"},{day:14,ch:"Instagram",act:"New angle DM"},{day:20,ch:"Email",act:"Retainer proposal"}]}},
-  {id:"raj",name:"Raj Menon",role:"sales",title:"Deal Closer",av:"Ã°ÂÂ§ÂÃ¢ÂÂÃ°ÂÂÂ¼",pic:"https://ui-avatars.com/api/?name=Raj+Menon&background=f59e0b&color=fff&size=150&bold=true",eth:"Indian",bg:"Proposals & contracts",status:"active",config:DEF_CFG},
-  {id:"noor",name:"Noor Al-Sayed",role:"sales",title:"DM & Social Outreach",av:"Ã°ÂÂÂ",pic:"https://ui-avatars.com/api/?name=Noor+Al-Sayed&background=e8401e&color=fff&size=150&bold=true",eth:"Lebanese",bg:"Instagram DMs, story replies, warm-up engagement. Converts social interactions to sales calls.",status:"active",config:CFG_SALES},
-  {id:"ali",name:"Ali Okonkwo",role:"sales",title:"Social Engagement",av:"Ã°ÂÂÂº",pic:"https://ui-avatars.com/api/?name=Ali+Okonkwo&background=e8401e&color=fff&size=150&bold=true",eth:"Nigerian-Dubai",bg:"Warm-up strategy, story replies, comment engagement. Feeds warm leads to closers.",status:"active",config:CFG_SALES},
-  {id:"layla",name:"Layla Hassan",role:"marketing",title:"Brand Strategist",av:"Ã°ÂÂÂ©Ã¢ÂÂÃ°ÂÂÂ¨",pic:"https://ui-avatars.com/api/?name=Layla+Hassan&background=8b5cf6&color=fff&size=150&bold=true",eth:"Egyptian",bg:"Content calendars, campaigns, brand positioning across IG/FB/LinkedIn.",status:"active",config:CFG_MARKETING},
-  {id:"aiden",name:"Aiden Murphy",role:"marketing",title:"Growth & Ads",av:"Ã°ÂÂ§ÂÃ¢ÂÂÃ°ÂÂÂ",pic:"https://ui-avatars.com/api/?name=Aiden+Murphy&background=06b6d4&color=fff&size=150&bold=true",eth:"Irish",bg:"Paid ads, SEO, email funnels, lead-gen campaigns.",status:"active",config:CFG_MARKETING},
-  {id:"zara",name:"Zara Petrova",role:"marketing",title:"Creative Director",av:"Ã°ÂÂÂ©Ã¢ÂÂÃ°ÂÂÂ¤",pic:"https://ui-avatars.com/api/?name=Zara+Petrova&background=8b5cf6&color=fff&size=150&bold=true",eth:"Russian-Emirati",bg:"Designs posts 3x daily. Nano Banana for visuals. Brand aesthetic.",status:"active",config:CFG_MARKETING},
-  {id:"kai",name:"Kai Nakamura",role:"marketing",title:"Short-Form & Reels",av:"Ã°ÂÂÂ¬",pic:"https://ui-avatars.com/api/?name=Kai+Nakamura&background=06b6d4&color=fff&size=150&bold=true",eth:"Japanese",bg:"Reels, TikToks, Stories, trending formats. Cross-platform adaptation.",status:"active",config:CFG_MARKETING},
-  {id:"maya",name:"Maya Torres",role:"sales",title:"Call & Close Specialist",av:"Ã°ÂÂÂ±",pic:"https://ui-avatars.com/api/?name=Maya+Torres&background=e8401e&color=fff&size=150&bold=true",eth:"Filipino",bg:"Cold calls, discovery calls, objection handling. 10yrs Dubai. Closes on the phone.",status:"active",config:CFG_SALES},
-  {id:"ravi",name:"Ravi Sharma",role:"marketing",title:"Video Producer",av:"Ã°ÂÂÂ¥",pic:"https://ui-avatars.com/api/?name=Ravi+Sharma&background=8b5cf6&color=fff&size=150&bold=true",eth:"Indian",bg:"YouTube strategy. Scripting, editing, SEO. Grows channels. Long-form + Shorts.",status:"active",config:CFG_MARKETING},
-  {id:"mia",name:"Mia Williams",role:"marketing",title:"Shorts & Reels Creator",av:"Ã°ÂÂÂ¹",pic:"https://ui-avatars.com/api/?name=Mia+Williams&background=8b5cf6&color=fff&size=150&bold=true",eth:"British-Dubai",bg:"YouTube Shorts, IG Reels, TikToks, thumbnails, hooks. Viral formats.",status:"active",config:CFG_MARKETING},
-  {id:"diana",name:"Diana Rossi",role:"account",title:"Client Success",av:"Ã°ÂÂÂ",pic:"https://ui-avatars.com/api/?name=Diana+Rossi&background=10b981&color=fff&size=150&bold=true",eth:"Italian",bg:"Onboarding & upsells",status:"active",config:CFG_ACCOUNT},
-  {id:"sam",name:"Sam Okafor",role:"account",title:"Retention",av:"Ã°ÂÂ¤Â",pic:"https://ui-avatars.com/api/?name=Mia+Williams&background=f43f5e&color=fff&size=150&bold=true2",eth:"Nigerian",bg:"Loyalty & win-backs",status:"active",config:CFG_ACCOUNT},
-  {id:"alex",name:"Alex Kim",role:"analytics",title:"Data Analyst",av:"Ã°ÂÂ§Â ",pic:"https://ui-avatars.com/api/?name=Alex+Kim&background=38bdf8&color=fff&size=150&bold=true",eth:"Korean",bg:"Reports & ROI",status:"active",config:CFG_ANALYTICS},
-  {id:"yara",name:"Yara Sheikh",role:"investor",title:"Investor Relations",av:"Ã°ÂÂÂ",pic:"https://ui-avatars.com/api/?name=Yara+Sheikh&background=84cc16&color=fff&size=150&bold=true",eth:"Pakistani-Emirati",bg:"DIFC. VC connections",status:"active",config:CFG_INVESTOR},
-  {id:"marcus",name:"Marcus Chen",role:"investor",title:"Pitch Strategist",av:"Ã°ÂÂÂ¯",pic:"https://ui-avatars.com/api/?name=Marcus+Chen&background=84cc16&color=fff&size=150&bold=true",eth:"Chinese-American",bg:"Ex-YC. Pitch expert",status:"active",config:CFG_INVESTOR},
+  {id:"omar",name:"Omar Al-Rashid",role:"sales",title:"Sr Sales Hunter",av:"👨‍💼",pic:"https://ui-avatars.com/api/?name=Omar+Al-Rashid&background=e8401e&color=fff&size=150&bold=true",eth:"Emirati",bg:"Real Estate & Corporate",status:"active",config:{...DEF_CFG,targeting:{...DEF_CFG.targeting,industries:["Real Estate","Corporates","Events"]},outreachSequence:[{day:1,ch:"LinkedIn",act:"Connect decision maker"},{day:2,ch:"Email",act:"Cold email + portfolio"},{day:3,ch:"Instagram",act:"Follow + like 3"},{day:5,ch:"Phone",act:"Cold call"},{day:7,ch:"Email",act:"Follow-up + case study"},{day:10,ch:"Phone",act:"Follow-up call"},{day:15,ch:"Email",act:"Proposal + retainer"},{day:20,ch:"Phone",act:"Decision push"},{day:30,ch:"Email",act:"Re-engagement"}]}},
+  {id:"sara",name:"Sara Kapoor",role:"sales",title:"Social Outreach",av:"👩‍💻",pic:"https://ui-avatars.com/api/?name=Sara+Kapoor&background=ec4899&color=fff&size=150&bold=true",eth:"Indian-Emirati",bg:"F&B & Lifestyle via Instagram",status:"active",config:{...DEF_CFG,targeting:{...DEF_CFG.targeting,industries:["F&B","Ecommerce","Food Aggregators"]},outreachSequence:[{day:1,ch:"Instagram",act:"Like 5 + Follow"},{day:2,ch:"Instagram",act:"Comment on post"},{day:3,ch:"Instagram",act:"Story reply"},{day:4,ch:"Instagram",act:"Opening DM"},{day:5,ch:"Instagram",act:"Portfolio in DM"},{day:7,ch:"Instagram",act:"Voice note"},{day:8,ch:"Email",act:"Formal intro"},{day:10,ch:"Phone",act:"WhatsApp call"},{day:14,ch:"Instagram",act:"New angle DM"},{day:20,ch:"Email",act:"Retainer proposal"}]}},
+  {id:"raj",name:"Raj Menon",role:"sales",title:"Deal Closer",av:"🧑‍💼",pic:"https://ui-avatars.com/api/?name=Raj+Menon&background=f59e0b&color=fff&size=150&bold=true",eth:"Indian",bg:"Proposals & contracts",status:"active",config:DEF_CFG},
+  {id:"noor",name:"Noor Al-Sayed",role:"sales",title:"DM & Social Outreach",av:"💃",pic:"https://ui-avatars.com/api/?name=Noor+Al-Sayed&background=e8401e&color=fff&size=150&bold=true",eth:"Lebanese",bg:"Instagram DMs, story replies, warm-up engagement. Converts social interactions to sales calls.",status:"active",config:CFG_SALES},
+  {id:"ali",name:"Ali Okonkwo",role:"sales",title:"Social Engagement",av:"🕺",pic:"https://ui-avatars.com/api/?name=Ali+Okonkwo&background=e8401e&color=fff&size=150&bold=true",eth:"Nigerian-Dubai",bg:"Warm-up strategy, story replies, comment engagement. Feeds warm leads to closers.",status:"active",config:CFG_SALES},
+  {id:"layla",name:"Layla Hassan",role:"marketing",title:"Brand Strategist",av:"👩‍🎨",pic:"https://ui-avatars.com/api/?name=Layla+Hassan&background=8b5cf6&color=fff&size=150&bold=true",eth:"Egyptian",bg:"Content calendars, campaigns, brand positioning across IG/FB/LinkedIn.",status:"active",config:CFG_MARKETING},
+  {id:"aiden",name:"Aiden Murphy",role:"marketing",title:"Growth & Ads",av:"🧑‍🚀",pic:"https://ui-avatars.com/api/?name=Aiden+Murphy&background=06b6d4&color=fff&size=150&bold=true",eth:"Irish",bg:"Paid ads, SEO, email funnels, lead-gen campaigns.",status:"active",config:CFG_MARKETING},
+  {id:"zara",name:"Zara Petrova",role:"marketing",title:"Creative Director",av:"👩‍🎤",pic:"https://ui-avatars.com/api/?name=Zara+Petrova&background=8b5cf6&color=fff&size=150&bold=true",eth:"Russian-Emirati",bg:"Designs posts 3x daily. Nano Banana for visuals. Brand aesthetic.",status:"active",config:CFG_MARKETING},
+  {id:"kai",name:"Kai Nakamura",role:"marketing",title:"Short-Form & Reels",av:"🎬",pic:"https://ui-avatars.com/api/?name=Kai+Nakamura&background=06b6d4&color=fff&size=150&bold=true",eth:"Japanese",bg:"Reels, TikToks, Stories, trending formats. Cross-platform adaptation.",status:"active",config:CFG_MARKETING},
+  {id:"maya",name:"Maya Torres",role:"sales",title:"Call & Close Specialist",av:"📱",pic:"https://ui-avatars.com/api/?name=Maya+Torres&background=e8401e&color=fff&size=150&bold=true",eth:"Filipino",bg:"Cold calls, discovery calls, objection handling. 10yrs Dubai. Closes on the phone.",status:"active",config:CFG_SALES},
+  {id:"ravi",name:"Ravi Sharma",role:"marketing",title:"Video Producer",av:"🎥",pic:"https://ui-avatars.com/api/?name=Ravi+Sharma&background=8b5cf6&color=fff&size=150&bold=true",eth:"Indian",bg:"YouTube strategy. Scripting, editing, SEO. Grows channels. Long-form + Shorts.",status:"active",config:CFG_MARKETING},
+  {id:"mia",name:"Mia Williams",role:"marketing",title:"Shorts & Reels Creator",av:"📹",pic:"https://ui-avatars.com/api/?name=Mia+Williams&background=8b5cf6&color=fff&size=150&bold=true",eth:"British-Dubai",bg:"YouTube Shorts, IG Reels, TikToks, thumbnails, hooks. Viral formats.",status:"active",config:CFG_MARKETING},
+  {id:"diana",name:"Diana Rossi",role:"account",title:"Client Success",av:"👑",pic:"https://ui-avatars.com/api/?name=Diana+Rossi&background=10b981&color=fff&size=150&bold=true",eth:"Italian",bg:"Onboarding & upsells",status:"active",config:CFG_ACCOUNT},
+  {id:"sam",name:"Sam Okafor",role:"account",title:"Retention",av:"🤝",pic:"https://ui-avatars.com/api/?name=Mia+Williams&background=f43f5e&color=fff&size=150&bold=true2",eth:"Nigerian",bg:"Loyalty & win-backs",status:"active",config:CFG_ACCOUNT},
+  {id:"alex",name:"Alex Kim",role:"analytics",title:"Data Analyst",av:"🧠",pic:"https://ui-avatars.com/api/?name=Alex+Kim&background=38bdf8&color=fff&size=150&bold=true",eth:"Korean",bg:"Reports & ROI",status:"active",config:CFG_ANALYTICS},
+  {id:"yara",name:"Yara Sheikh",role:"investor",title:"Investor Relations",av:"💎",pic:"https://ui-avatars.com/api/?name=Yara+Sheikh&background=84cc16&color=fff&size=150&bold=true",eth:"Pakistani-Emirati",bg:"DIFC. VC connections",status:"active",config:CFG_INVESTOR},
+  {id:"marcus",name:"Marcus Chen",role:"investor",title:"Pitch Strategist",av:"🎯",pic:"https://ui-avatars.com/api/?name=Marcus+Chen&background=84cc16&color=fff&size=150&bold=true",eth:"Chinese-American",bg:"Ex-YC. Pitch expert",status:"active",config:CFG_INVESTOR},
 ];
 
 const INIT_LEADS=[
-  {id:1,name:"Emaar Properties",website:"emaar.com",ind:"Real Estate",stage:"Research",contactName:"Ahmed Al-Mansoori",contactTitle:"Marketing Director",email:"ahmed.m@emaar.ae",phone:"+971-4-367-3333",ig:"@emaar",linkedin:"linkedin.com/in/ahmed-mansoori",val:25000,notes:"New Dubai Hills development launch Ã¢ÂÂ needs property photography, drone coverage, timelapse for 3 buildings",requirements:{photographers:3,videographers:1,date:"TBD Ã¢ÂÂ April 2026",venue:"Dubai Hills Estate (3 towers)",hours:0,editedVideos:1,videoDuration:"3-5 min timelapse",guests:0,additionalNotes:"Drone aerial shots, construction timelapse (6 months), virtual tours for sales center"},approachedVia:{channel:"LinkedIn",handle:"linkedin.com/in/ahmed-mansoori",firstContact:"Mar 20"},src:"Omar (LinkedIn)",srcType:"linkedin",assignedTo:"omar",serviceType:"real-estate",
+  {id:1,name:"Emaar Properties",website:"emaar.com",ind:"Real Estate",stage:"Research",contactName:"Ahmed Al-Mansoori",contactTitle:"Marketing Director",email:"ahmed.m@emaar.ae",phone:"+971-4-367-3333",ig:"@emaar",linkedin:"linkedin.com/in/ahmed-mansoori",val:25000,notes:"New Dubai Hills development launch — needs property photography, drone coverage, timelapse for 3 buildings",requirements:{photographers:3,videographers:1,date:"TBD — April 2026",venue:"Dubai Hills Estate (3 towers)",hours:0,editedVideos:1,videoDuration:"3-5 min timelapse",guests:0,additionalNotes:"Drone aerial shots, construction timelapse (6 months), virtual tours for sales center"},approachedVia:{channel:"LinkedIn",handle:"linkedin.com/in/ahmed-mansoori",firstContact:"Mar 20"},src:"Omar (LinkedIn)",srcType:"linkedin",assignedTo:"omar",serviceType:"real-estate",
     logs:[
-      {type:"linkedin",date:"Mar 20",msg:"Connection request sent to Ahmed",summary:"LinkedIn connection request sent",transcript:"Hi Ahmed, I lead creative partnerships at Kapturise. I noticed Emaar's Dubai Hills project Ã¢ÂÂ we specialize in real estate photography, drone coverage, and construction timelapses across Dubai. Would love to connect."},
-      {type:"email",date:"Mar 21",msg:"Cold email #1 sent Ã¢ÂÂ property portfolio attached",summary:"Cold email with property photography portfolio",transcript:"Subject: Professional Property Photography for Dubai Hills\n\nHi Ahmed,\n\nI'm Omar from Kapturise Ã¢ÂÂ we're Dubai's leading on-demand creative production agency.\n\nI noticed the new Dubai Hills development launch and wanted to share how we've helped similar projects:\n\n- Drone aerial photography showing full development progress\n- Construction timelapse (we set up cameras for 6+ months)\n- Virtual tours for off-plan sales centers\n- Property photography that converts on Bayut, Property Finder & Dubizzle\n\nAttached is our real estate portfolio. We've shot for [similar developers] in the area.\n\nWorth a 15-minute call this week?\n\nBest,\nOmar Al-Rashid\nSr Sales, Kapturise\n+971-XX-XXX-XXXX"},
-      {type:"note",date:"Mar 21",msg:"Ahmed viewed LinkedIn profile within 2 hours. High-value prospect Ã¢ÂÂ AED 25K+ deal potential.",summary:"Ahmed viewed LinkedIn profile. High engagement signal.",transcript:""}
+      {type:"linkedin",date:"Mar 20",msg:"Connection request sent to Ahmed",summary:"LinkedIn connection request sent",transcript:"Hi Ahmed, I lead creative partnerships at Kapturise. I noticed Emaar's Dubai Hills project — we specialize in real estate photography, drone coverage, and construction timelapses across Dubai. Would love to connect."},
+      {type:"email",date:"Mar 21",msg:"Cold email #1 sent — property portfolio attached",summary:"Cold email with property photography portfolio",transcript:"Subject: Professional Property Photography for Dubai Hills\n\nHi Ahmed,\n\nI'm Omar from Kapturise — we're Dubai's leading on-demand creative production agency.\n\nI noticed the new Dubai Hills development launch and wanted to share how we've helped similar projects:\n\n- Drone aerial photography showing full development progress\n- Construction timelapse (we set up cameras for 6+ months)\n- Virtual tours for off-plan sales centers\n- Property photography that converts on Bayut, Property Finder & Dubizzle\n\nAttached is our real estate portfolio. We've shot for [similar developers] in the area.\n\nWorth a 15-minute call this week?\n\nBest,\nOmar Al-Rashid\nSr Sales, Kapturise\n+971-XX-XXX-XXXX"},
+      {type:"note",date:"Mar 21",msg:"Ahmed viewed LinkedIn profile within 2 hours. High-value prospect — AED 25K+ deal potential.",summary:"Ahmed viewed LinkedIn profile. High engagement signal.",transcript:""}
     ]},
-  {id:2,name:"Salt Restaurant",website:"salt.ae",ind:"F&B",stage:"First Contact",contactName:"Priya Nair",contactTitle:"Brand Manager",email:"priya@salt.ae",phone:"+971-50-882-1234",ig:"@saltdxb",linkedin:"linkedin.com/in/priyanair",val:8000,notes:"Menu refresh Ã¢ÂÂ food photography needed for Talabat + Deliveroo listings and Instagram content",requirements:{photographers:1,videographers:1,date:"TBD",venue:"Salt restaurant (multiple locations)",hours:8,editedVideos:10,videoDuration:"15-30 sec Reels",guests:0,additionalNotes:"45 dishes, food styling included, Talabat-format photos, IG Reels of signature dishes"},approachedVia:{channel:"Instagram",handle:"@saltdxb",firstContact:"Mar 17"},src:"Sara (IG DM)",srcType:"instagram",assignedTo:"sara",serviceType:"food-photo",
+  {id:2,name:"Salt Restaurant",website:"salt.ae",ind:"F&B",stage:"First Contact",contactName:"Priya Nair",contactTitle:"Brand Manager",email:"priya@salt.ae",phone:"+971-50-882-1234",ig:"@saltdxb",linkedin:"linkedin.com/in/priyanair",val:8000,notes:"Menu refresh — food photography needed for Talabat + Deliveroo listings and Instagram content",requirements:{photographers:1,videographers:1,date:"TBD",venue:"Salt restaurant (multiple locations)",hours:8,editedVideos:10,videoDuration:"15-30 sec Reels",guests:0,additionalNotes:"45 dishes, food styling included, Talabat-format photos, IG Reels of signature dishes"},approachedVia:{channel:"Instagram",handle:"@saltdxb",firstContact:"Mar 17"},src:"Sara (IG DM)",srcType:"instagram",assignedTo:"sara",serviceType:"food-photo",
     logs:[
       {type:"instagram",date:"Mar 17",msg:"Liked 5 posts, followed @saltdxb",summary:"Warm-up: liked 5 posts + followed",transcript:""},
-      {type:"instagram",date:"Mar 18",msg:"Commented on new burger post: 'This looks incredible Ã¢ÂÂ the lighting really makes the cheese pop!'",summary:"Left genuine comment on food post",transcript:""},
-      {type:"instagram",date:"Mar 19",msg:"DM sent: opening message about food photography",summary:"Opening DM sent",transcript:"Hey Priya! Ã°ÂÂÂ Your new menu looks absolutely incredible. We specialize in food photography for Dubai restaurants Ã¢ÂÂ helping brands like yours look amazing on Talabat and Instagram. Mind if I send over some of our F&B work?"},
-      {type:"instagram",date:"Mar 19",msg:"Priya replied: 'Interesting! Send me your portfolio'",summary:"Positive reply Ã¢ÂÂ wants portfolio",transcript:"Priya: Hi! Thanks, we actually are looking to reshoot our menu. The current photos look dated. Send me what you've got!\n\nSara: Amazing! Here's our food photography portfolio: [link]. We recently shot the full menu for [restaurant name] Ã¢ÂÂ 45 dishes in one day, styled and edited within 48 hours. Would love to chat about what you need.\n\nPriya: This looks really good. How much for a full menu reshoot? We have about 45 dishes.\n\nSara: For 45 dishes with professional food styling, you're looking at around AED 8,000. That includes Talabat-format photos + Instagram-ready vertical shots. Want me to send a detailed proposal?\n\nPriya: Yes please, send it to priya@salt.ae"},
-      {type:"instagram",date:"Mar 19",msg:"Sent Kapturise food portfolio link + will email proposal",summary:"Portfolio sent. Priya asked for pricing Ã¢ÂÂ AED 8K quoted. Emailing proposal.",transcript:""}
+      {type:"instagram",date:"Mar 18",msg:"Commented on new burger post: 'This looks incredible — the lighting really makes the cheese pop!'",summary:"Left genuine comment on food post",transcript:""},
+      {type:"instagram",date:"Mar 19",msg:"DM sent: opening message about food photography",summary:"Opening DM sent",transcript:"Hey Priya! 👋 Your new menu looks absolutely incredible. We specialize in food photography for Dubai restaurants — helping brands like yours look amazing on Talabat and Instagram. Mind if I send over some of our F&B work?"},
+      {type:"instagram",date:"Mar 19",msg:"Priya replied: 'Interesting! Send me your portfolio'",summary:"Positive reply — wants portfolio",transcript:"Priya: Hi! Thanks, we actually are looking to reshoot our menu. The current photos look dated. Send me what you've got!\n\nSara: Amazing! Here's our food photography portfolio: [link]. We recently shot the full menu for [restaurant name] — 45 dishes in one day, styled and edited within 48 hours. Would love to chat about what you need.\n\nPriya: This looks really good. How much for a full menu reshoot? We have about 45 dishes.\n\nSara: For 45 dishes with professional food styling, you're looking at around AED 8,000. That includes Talabat-format photos + Instagram-ready vertical shots. Want me to send a detailed proposal?\n\nPriya: Yes please, send it to priya@salt.ae"},
+      {type:"instagram",date:"Mar 19",msg:"Sent Kapturise food portfolio link + will email proposal",summary:"Portfolio sent. Priya asked for pricing — AED 8K quoted. Emailing proposal.",transcript:""}
     ]},
-  {id:3,name:"Grand Events LLC",website:"grandevents.ae",ind:"Events",stage:"Proposal",contactName:"Priya Sharma",contactTitle:"Operations Director",email:"priya@grandevents.ae",phone:"+971-55-991-4567",ig:"@grandevents",linkedin:"linkedin.com/in/priyasharma-events",val:18000,notes:"Corporate gala for 500 guests at Atlantis Ã¢ÂÂ full coverage + talent for hosting",requirements:{photographers:2,videographers:2,date:"April 15, 2026",venue:"Atlantis, The Palm Ã¢ÂÂ Grand Ballroom",hours:8,editedVideos:3,videoDuration:"Highlights 90sec, Speeches 10min, BTS 3min",guests:500,additionalNotes:"2 models for registration desk, same-night highlights reel by 11pm, on-site editor needed"},approachedVia:{channel:"Email",handle:"priya@grandevents.ae",firstContact:"Mar 15"},src:"Raj (Email)",srcType:"email",assignedTo:"raj",serviceType:"event",
-    logs:[{type:"email",date:"Mar 15",msg:"Cold email sent Ã¢ÂÂ event coverage portfolio",summary:"Sent initial outreach with event portfolio",transcript:""},{type:"email",date:"Mar 16",msg:"Priya replied: 'We have a gala in April, send pricing'",summary:"Positive reply Ã¢ÂÂ requesting pricing",transcript:"Hi,\n\nThanks for reaching out. We have a corporate gala coming up in April at Atlantis for about 500 guests. We need full photo and video coverage. Can you send us your pricing for something like this?\n\nBest,\nPriya Sharma\nOperations Director, Grand Events"},{type:"phone",date:"Mar 17",msg:"Discovery call Ã¢ÂÂ 22 mins. Discussed scope: 500 guests, Atlantis venue, need highlights video same night.",summary:"22-min discovery call. 500 guests at Atlantis. Same-night highlights needed. Budget ~20K.",transcript:"Raj: Hi Priya, thanks for taking the time. I wanted to understand the event better.\n\nPriya: Sure, so we're doing a corporate gala at Atlantis, The Palm. About 500 guests, it's for our annual awards night.\n\nRaj: Beautiful venue. When in April?\n\nPriya: April 15th, evening event starting at 7pm, goes until midnight.\n\nRaj: And in terms of coverage, what are you looking for?\n\nPriya: We need photographers obviously, but the big thing is video. Our CEO wants a highlights reel that same night to share on social media.\n\nRaj: Same night Ã¢ÂÂ so you'd need an editor on-site?\n\nPriya: Exactly. Last year's vendor couldn't deliver that and we were really disappointed.\n\nRaj: We do same-night edits regularly. We'd have an editor on a laptop backstage. Usually a 90-second highlights reel ready by 11pm.\n\nPriya: That's exactly what we need. What about the team size?\n\nRaj: For 500 guests at Atlantis, I'd recommend 2 photographers and 2 videographers. One team covers the main stage and speeches, the other does candid and networking.\n\nPriya: And talent? We need 2 models for the registration desk.\n\nRaj: We can arrange that through our talent management. What's the budget range you're working with?\n\nPriya: We had about AED 20,000 allocated for the whole thing last year.\n\nRaj: That's workable. I'll put together a detailed proposal with 3 tier options.\n\nPriya: Perfect. Send it over and I'll review with our CEO."},{type:"email",date:"Mar 18",msg:"Proposal sent: AED 18,000 for full package (2P+2V+8hrs+3videos+2talent)",summary:"Proposal sent Ã¢ÂÂ 3 tiers, recommended Tier 2 at AED 18K",transcript:""},{type:"note",date:"Mar 18",msg:"Priya said she needs to check with CEO. Follow up by Mar 22.",summary:"Waiting for CEO approval. Follow up Mar 22.",transcript:""}]},
+  {id:3,name:"Grand Events LLC",website:"grandevents.ae",ind:"Events",stage:"Proposal",contactName:"Priya Sharma",contactTitle:"Operations Director",email:"priya@grandevents.ae",phone:"+971-55-991-4567",ig:"@grandevents",linkedin:"linkedin.com/in/priyasharma-events",val:18000,notes:"Corporate gala for 500 guests at Atlantis — full coverage + talent for hosting",requirements:{photographers:2,videographers:2,date:"April 15, 2026",venue:"Atlantis, The Palm — Grand Ballroom",hours:8,editedVideos:3,videoDuration:"Highlights 90sec, Speeches 10min, BTS 3min",guests:500,additionalNotes:"2 models for registration desk, same-night highlights reel by 11pm, on-site editor needed"},approachedVia:{channel:"Email",handle:"priya@grandevents.ae",firstContact:"Mar 15"},src:"Raj (Email)",srcType:"email",assignedTo:"raj",serviceType:"event",
+    logs:[{type:"email",date:"Mar 15",msg:"Cold email sent — event coverage portfolio",summary:"Sent initial outreach with event portfolio",transcript:""},{type:"email",date:"Mar 16",msg:"Priya replied: 'We have a gala in April, send pricing'",summary:"Positive reply — requesting pricing",transcript:"Hi,\n\nThanks for reaching out. We have a corporate gala coming up in April at Atlantis for about 500 guests. We need full photo and video coverage. Can you send us your pricing for something like this?\n\nBest,\nPriya Sharma\nOperations Director, Grand Events"},{type:"phone",date:"Mar 17",msg:"Discovery call — 22 mins. Discussed scope: 500 guests, Atlantis venue, need highlights video same night.",summary:"22-min discovery call. 500 guests at Atlantis. Same-night highlights needed. Budget ~20K.",transcript:"Raj: Hi Priya, thanks for taking the time. I wanted to understand the event better.\n\nPriya: Sure, so we're doing a corporate gala at Atlantis, The Palm. About 500 guests, it's for our annual awards night.\n\nRaj: Beautiful venue. When in April?\n\nPriya: April 15th, evening event starting at 7pm, goes until midnight.\n\nRaj: And in terms of coverage, what are you looking for?\n\nPriya: We need photographers obviously, but the big thing is video. Our CEO wants a highlights reel that same night to share on social media.\n\nRaj: Same night — so you'd need an editor on-site?\n\nPriya: Exactly. Last year's vendor couldn't deliver that and we were really disappointed.\n\nRaj: We do same-night edits regularly. We'd have an editor on a laptop backstage. Usually a 90-second highlights reel ready by 11pm.\n\nPriya: That's exactly what we need. What about the team size?\n\nRaj: For 500 guests at Atlantis, I'd recommend 2 photographers and 2 videographers. One team covers the main stage and speeches, the other does candid and networking.\n\nPriya: And talent? We need 2 models for the registration desk.\n\nRaj: We can arrange that through our talent management. What's the budget range you're working with?\n\nPriya: We had about AED 20,000 allocated for the whole thing last year.\n\nRaj: That's workable. I'll put together a detailed proposal with 3 tier options.\n\nPriya: Perfect. Send it over and I'll review with our CEO."},{type:"email",date:"Mar 18",msg:"Proposal sent: AED 18,000 for full package (2P+2V+8hrs+3videos+2talent)",summary:"Proposal sent — 3 tiers, recommended Tier 2 at AED 18K",transcript:""},{type:"note",date:"Mar 18",msg:"Priya said she needs to check with CEO. Follow up by Mar 22.",summary:"Waiting for CEO approval. Follow up Mar 22.",transcript:""}]},
   {id:4,name:"Noon Food",website:"noon.com/food",ind:"Food Aggregator",stage:"Qualify",contactName:"Tariq Hassan",contactTitle:"Content Lead",email:"tariq.h@noon.com",phone:"+971-4-200-8000",ig:"@noonfood",linkedin:"linkedin.com/in/tariqhassan",val:35000,notes:"Product photography for 200+ restaurant listings on Noon Food platform",requirements:{photographers:5,videographers:0,date:"Phased: April-June 2026",venue:"200+ restaurant locations across Dubai/Abu Dhabi",hours:0,editedVideos:0,videoDuration:"N/A",guests:0,additionalNotes:"Standardized shoot kit, white background, 3 angles per dish, bulk delivery, AI quality checking. Phase 1: 50 restaurants, Phase 2: 100, Phase 3: remaining"},approachedVia:{channel:"Email",handle:"tariq.h@noon.com",firstContact:"Mar 14"},src:"Omar (Cold Email)",srcType:"email",assignedTo:"omar",serviceType:"food-photo",
     logs:[
-      {type:"email",date:"Mar 14",msg:"Cold email Ã¢ÂÂ mentioned scaling food content for aggregator listings",summary:"Cold outreach about volume food photography for platform",transcript:"Subject: Scale your restaurant listings with professional food photography\n\nHi Tariq,\n\nI noticed Noon Food is onboarding hundreds of new restaurants. Every listing with professional photos gets 3x more orders Ã¢ÂÂ but coordinating photographers for 200+ restaurants is a nightmare.\n\nKapturise solves this. We're Dubai's on-demand photography platform with 400+ vetted photographers across the UAE. We can shoot standardized food photos at scale: same lighting, same angles, same quality Ã¢ÂÂ for every restaurant on your platform.\n\nWe did a similar project for [platform] Ã¢ÂÂ 150 restaurants in 3 weeks.\n\nWorth a quick call?\n\nOmar Al-Rashid\nKapturise"},
-      {type:"email",date:"Mar 16",msg:"Tariq replied asking about capacity and volume pricing",summary:"Positive reply Ã¢ÂÂ wants volume details",transcript:"Hi Omar,\n\nThis is actually really timely. We've been struggling with inconsistent food photos across our restaurant partners. Some upload phone photos and it kills conversion.\n\nA few questions:\n1. How many restaurants can you cover per week?\n2. What's the per-dish pricing at 200+ volume?\n3. Can you guarantee consistent quality across different photographers?\n4. What's the turnaround time per restaurant?\n\nTariq Hassan\nContent Lead, Noon Food"},
-      {type:"email",date:"Mar 17",msg:"Replied with volume pricing: AED 150/dish for 200+ dishes. Includes styling.",summary:"Sent volume pricing Ã¢ÂÂ AED 150/dish with styling. Need to qualify budget and timeline.",transcript:"Hi Tariq,\n\nGreat questions:\n\n1. Capacity: 10-15 restaurants per week across Dubai/Abu Dhabi\n2. Volume pricing: AED 150 per dish (includes professional food styling) for 200+ dishes. Standard rate is AED 250/dish.\n3. Consistency: We use a standardized shoot kit Ã¢ÂÂ same lighting setup, backdrop, and shot list. Plus AI quality checking before delivery.\n4. Turnaround: 24-48 hours per restaurant, edited and formatted.\n\nFor 200+ restaurants, we'd propose a phased rollout:\n- Phase 1: 50 restaurants (AED 35,000)\n- Phase 2: 100 restaurants\n- Phase 3: Remaining + ongoing new partners\n\nHappy to jump on a call to walk through the process?\n\nOmar"},
+      {type:"email",date:"Mar 14",msg:"Cold email — mentioned scaling food content for aggregator listings",summary:"Cold outreach about volume food photography for platform",transcript:"Subject: Scale your restaurant listings with professional food photography\n\nHi Tariq,\n\nI noticed Noon Food is onboarding hundreds of new restaurants. Every listing with professional photos gets 3x more orders — but coordinating photographers for 200+ restaurants is a nightmare.\n\nKapturise solves this. We're Dubai's on-demand photography platform with 400+ vetted photographers across the UAE. We can shoot standardized food photos at scale: same lighting, same angles, same quality — for every restaurant on your platform.\n\nWe did a similar project for [platform] — 150 restaurants in 3 weeks.\n\nWorth a quick call?\n\nOmar Al-Rashid\nKapturise"},
+      {type:"email",date:"Mar 16",msg:"Tariq replied asking about capacity and volume pricing",summary:"Positive reply — wants volume details",transcript:"Hi Omar,\n\nThis is actually really timely. We've been struggling with inconsistent food photos across our restaurant partners. Some upload phone photos and it kills conversion.\n\nA few questions:\n1. How many restaurants can you cover per week?\n2. What's the per-dish pricing at 200+ volume?\n3. Can you guarantee consistent quality across different photographers?\n4. What's the turnaround time per restaurant?\n\nTariq Hassan\nContent Lead, Noon Food"},
+      {type:"email",date:"Mar 17",msg:"Replied with volume pricing: AED 150/dish for 200+ dishes. Includes styling.",summary:"Sent volume pricing — AED 150/dish with styling. Need to qualify budget and timeline.",transcript:"Hi Tariq,\n\nGreat questions:\n\n1. Capacity: 10-15 restaurants per week across Dubai/Abu Dhabi\n2. Volume pricing: AED 150 per dish (includes professional food styling) for 200+ dishes. Standard rate is AED 250/dish.\n3. Consistency: We use a standardized shoot kit — same lighting setup, backdrop, and shot list. Plus AI quality checking before delivery.\n4. Turnaround: 24-48 hours per restaurant, edited and formatted.\n\nFor 200+ restaurants, we'd propose a phased rollout:\n- Phase 1: 50 restaurants (AED 35,000)\n- Phase 2: 100 restaurants\n- Phase 3: Remaining + ongoing new partners\n\nHappy to jump on a call to walk through the process?\n\nOmar"},
       {type:"note",date:"Mar 17",msg:"Need to qualify: confirm budget approval, timeline, and recurring vs one-time.",summary:"Qualification needed: budget approval, timeline, recurring contract potential.",transcript:""}
     ]},
   {id:5,name:"The Luxury Closet",website:"theluxurycloset.com",ind:"Ecommerce",stage:"Negotiation",contactName:"Nina Rossi",contactTitle:"Head of Marketing",email:"nina@theluxurycloset.com",phone:"+971-4-330-1100",ig:"@theluxurycloset",linkedin:"linkedin.com/in/ninarossi",val:22000,notes:"Seasonal lookbook shoot + influencer campaign for summer collection",requirements:{photographers:2,videographers:1,date:"June 2026",venue:"5 locations: rooftop, beach, pool, downtown Dubai, cafe",hours:24,editedVideos:2,videoDuration:"Hero video 60sec, influencer content 30sec each",guests:0,additionalNotes:"50 SKUs for lookbook, 5 lifestyle setups, 2-3 influencer collaborations, 1 month social media content"},approachedVia:{channel:"Instagram",handle:"@theluxurycloset",firstContact:"Mar 10"},src:"Sara (IG DM)",srcType:"instagram",assignedTo:"sara",serviceType:"product-photo",
     logs:[
-      {type:"instagram",date:"Mar 10",msg:"DM conversation started about new collection shoot",summary:"Initial DM about summer collection needs",transcript:"Sara: Hi Nina! Love what @theluxurycloset is doing with the spring collection content. Are you planning something for summer?\n\nNina: Actually yes! We're looking for a production partner for our summer lookbook. Interested?\n\nSara: Absolutely Ã¢ÂÂ that's exactly what we do. Can I send you some examples?"},
-      {type:"phone",date:"Mar 12",msg:"WhatsApp call Ã¢ÂÂ 15 mins. Nina wants lookbook + influencer campaign combined.",summary:"15-min WhatsApp call. Wants lookbook + influencer + content. Budget concern at AED 18K.",transcript:"Sara: Hi Nina, thanks for the call. Tell me about the summer campaign.\n\nNina: So we have 50 new SKUs launching in June. We need a full lookbook Ã¢ÂÂ flat lays, model shots, lifestyle setups. But we also want to do an influencer campaign alongside it.\n\nSara: Smart approach. Shoot the lookbook and influencer content together to save on production days.\n\nNina: Exactly. We're thinking 3 influencers, each doing a styling video and an unboxing.\n\nSara: And for the lookbook, you'd want how many setups?\n\nNina: At least 5 different lifestyle setups. Think rooftop, beach, pool, downtown Dubai, cafe.\n\nSara: So 50 SKUs, 5 locations, 3 influencers, plus campaign videos. That's a solid 3-4 day production.\n\nNina: What are we looking at price-wise? Our budget is around AED 18K.\n\nSara: Honestly for this scope, we'd be at about AED 22K. But let me see what I can do. I'll send a proposal with options.\n\nNina: OK send it over. If you can get closer to 18 we can probably make it work."},
+      {type:"instagram",date:"Mar 10",msg:"DM conversation started about new collection shoot",summary:"Initial DM about summer collection needs",transcript:"Sara: Hi Nina! Love what @theluxurycloset is doing with the spring collection content. Are you planning something for summer?\n\nNina: Actually yes! We're looking for a production partner for our summer lookbook. Interested?\n\nSara: Absolutely — that's exactly what we do. Can I send you some examples?"},
+      {type:"phone",date:"Mar 12",msg:"WhatsApp call — 15 mins. Nina wants lookbook + influencer campaign combined.",summary:"15-min WhatsApp call. Wants lookbook + influencer + content. Budget concern at AED 18K.",transcript:"Sara: Hi Nina, thanks for the call. Tell me about the summer campaign.\n\nNina: So we have 50 new SKUs launching in June. We need a full lookbook — flat lays, model shots, lifestyle setups. But we also want to do an influencer campaign alongside it.\n\nSara: Smart approach. Shoot the lookbook and influencer content together to save on production days.\n\nNina: Exactly. We're thinking 3 influencers, each doing a styling video and an unboxing.\n\nSara: And for the lookbook, you'd want how many setups?\n\nNina: At least 5 different lifestyle setups. Think rooftop, beach, pool, downtown Dubai, cafe.\n\nSara: So 50 SKUs, 5 locations, 3 influencers, plus campaign videos. That's a solid 3-4 day production.\n\nNina: What are we looking at price-wise? Our budget is around AED 18K.\n\nSara: Honestly for this scope, we'd be at about AED 22K. But let me see what I can do. I'll send a proposal with options.\n\nNina: OK send it over. If you can get closer to 18 we can probably make it work."},
       {type:"email",date:"Mar 13",msg:"Proposal sent: AED 22,000 for lookbook + influencer + 1-month content",summary:"Sent full proposal at AED 22K",transcript:""},
-      {type:"phone",date:"Mar 15",msg:"Call: Nina says budget firm at AED 18K. Negotiating scope.",summary:"Budget firm at 18K. Negotiating Ã¢ÂÂ may reduce influencers from 3 to 2.",transcript:"Sara: Hi Nina, any thoughts on the proposal?\n\nNina: I showed it to my CFO and the 22K is above budget. We're firm at 18K.\n\nSara: I understand. Let me think about what we can adjust. What if we go from 3 influencers to 2, and do 4 locations instead of 5?\n\nNina: The 5 locations are important for the variety. Can you cut somewhere else?\n\nSara: What about the campaign videos Ã¢ÂÂ instead of 2 fully produced videos, we do 1 hero video and repurpose the influencer content for the second?\n\nNina: That could work. Send me a revised proposal at 18-20K and I'll push for approval.\n\nSara: I'll have it to you tomorrow."},
+      {type:"phone",date:"Mar 15",msg:"Call: Nina says budget firm at AED 18K. Negotiating scope.",summary:"Budget firm at 18K. Negotiating — may reduce influencers from 3 to 2.",transcript:"Sara: Hi Nina, any thoughts on the proposal?\n\nNina: I showed it to my CFO and the 22K is above budget. We're firm at 18K.\n\nSara: I understand. Let me think about what we can adjust. What if we go from 3 influencers to 2, and do 4 locations instead of 5?\n\nNina: The 5 locations are important for the variety. Can you cut somewhere else?\n\nSara: What about the campaign videos — instead of 2 fully produced videos, we do 1 hero video and repurpose the influencer content for the second?\n\nNina: That could work. Send me a revised proposal at 18-20K and I'll push for approval.\n\nSara: I'll have it to you tomorrow."},
       {type:"note",date:"Mar 16",msg:"Counter-offered: AED 20K, 2 influencers instead of 3, 1 hero video + repurposed content.",summary:"Counter at AED 20K. Reduced influencers to 2, 1 hero video. Awaiting response.",transcript:""}
     ]},
-  {id:6,name:"DIFC Corporate Hub",website:"difc.ae",ind:"Corporate",stage:"Close",contactName:"Sarah Williams",contactTitle:"HR Director",email:"sarah.w@difc.ae",phone:"+971-4-362-2222",ig:"",linkedin:"linkedin.com/in/sarahwilliams-hr",val:12000,notes:"Annual corporate headshots for 150+ employees across 3 floors",requirements:{photographers:1,videographers:0,date:"April 2-3, 2026",venue:"DIFC Corporate Hub Ã¢ÂÂ Conference Room, 3 floors",hours:16,editedVideos:0,videoDuration:"N/A",guests:150,additionalNotes:"Professional headshots, white/grey backdrop, portable studio setup, 48hr delivery, ID badge format + LinkedIn format"},approachedVia:{channel:"Referral",handle:"Existing DIFC client",firstContact:"Mar 10"},src:"Raj (Referral)",srcType:"referral",assignedTo:"raj",serviceType:"headshots",
+  {id:6,name:"DIFC Corporate Hub",website:"difc.ae",ind:"Corporate",stage:"Close",contactName:"Sarah Williams",contactTitle:"HR Director",email:"sarah.w@difc.ae",phone:"+971-4-362-2222",ig:"",linkedin:"linkedin.com/in/sarahwilliams-hr",val:12000,notes:"Annual corporate headshots for 150+ employees across 3 floors",requirements:{photographers:1,videographers:0,date:"April 2-3, 2026",venue:"DIFC Corporate Hub — Conference Room, 3 floors",hours:16,editedVideos:0,videoDuration:"N/A",guests:150,additionalNotes:"Professional headshots, white/grey backdrop, portable studio setup, 48hr delivery, ID badge format + LinkedIn format"},approachedVia:{channel:"Referral",handle:"Existing DIFC client",firstContact:"Mar 10"},src:"Raj (Referral)",srcType:"referral",assignedTo:"raj",serviceType:"headshots",
     logs:[
-      {type:"email",date:"Mar 10",msg:"Referral intro from existing client at DIFC",summary:"Warm referral from existing DIFC client",transcript:"Hi Raj,\n\nI'm connecting you with Sarah Williams, HR Director at DIFC Corporate Hub. She mentioned they need headshots for their team and I immediately thought of Kapturise.\n\nSarah Ã¢ÂÂ Raj and his team shot our team photos last year and they were brilliant. Fast, professional, and the photos looked amazing.\n\nI'll let you two take it from here!\n\nBest,\n[Referrer]"},
-      {type:"phone",date:"Mar 11",msg:"Discovery call Ã¢ÂÂ Sarah needs headshots for 150 employees, 2-day on-site.",summary:"Discovery call. 150 employees, 2 days on-site, need for ID badges + LinkedIn.",transcript:"Raj: Hi Sarah, thanks for the referral from [name]. Tell me what you're looking for.\n\nSarah: We need professional headshots for about 150 employees. We're updating our website, internal directory, and everyone's LinkedIn needs refreshing.\n\nRaj: All on-site at DIFC?\n\nSarah: Yes, we'd set up a station in our conference room. Can you do it over 2 days?\n\nRaj: Absolutely. We'd set up a portable studio Ã¢ÂÂ white or grey backdrop, professional lighting. Each person takes about 5-7 minutes. Over 2 days that's very comfortable.\n\nSarah: And turnaround?\n\nRaj: Edited headshots delivered within 48 hours. We can also do ID badge format if you need.\n\nSarah: Perfect. What's the cost?\n\nRaj: For 150 people over 2 days, AED 12,000. That's about AED 80 per person including editing and retouching.\n\nSarah: That's reasonable. Send me a proposal and I'll get it approved this week."},
+      {type:"email",date:"Mar 10",msg:"Referral intro from existing client at DIFC",summary:"Warm referral from existing DIFC client",transcript:"Hi Raj,\n\nI'm connecting you with Sarah Williams, HR Director at DIFC Corporate Hub. She mentioned they need headshots for their team and I immediately thought of Kapturise.\n\nSarah — Raj and his team shot our team photos last year and they were brilliant. Fast, professional, and the photos looked amazing.\n\nI'll let you two take it from here!\n\nBest,\n[Referrer]"},
+      {type:"phone",date:"Mar 11",msg:"Discovery call — Sarah needs headshots for 150 employees, 2-day on-site.",summary:"Discovery call. 150 employees, 2 days on-site, need for ID badges + LinkedIn.",transcript:"Raj: Hi Sarah, thanks for the referral from [name]. Tell me what you're looking for.\n\nSarah: We need professional headshots for about 150 employees. We're updating our website, internal directory, and everyone's LinkedIn needs refreshing.\n\nRaj: All on-site at DIFC?\n\nSarah: Yes, we'd set up a station in our conference room. Can you do it over 2 days?\n\nRaj: Absolutely. We'd set up a portable studio — white or grey backdrop, professional lighting. Each person takes about 5-7 minutes. Over 2 days that's very comfortable.\n\nSarah: And turnaround?\n\nRaj: Edited headshots delivered within 48 hours. We can also do ID badge format if you need.\n\nSarah: Perfect. What's the cost?\n\nRaj: For 150 people over 2 days, AED 12,000. That's about AED 80 per person including editing and retouching.\n\nSarah: That's reasonable. Send me a proposal and I'll get it approved this week."},
       {type:"email",date:"Mar 12",msg:"Proposal: AED 12,000 for 150 headshots, 2 days, 48hr delivery",summary:"Proposal sent at AED 12K",transcript:""},
-      {type:"email",date:"Mar 14",msg:"Sarah confirmed budget approved by finance.",summary:"Budget approved!",transcript:"Hi Raj, Good news Ã¢ÂÂ finance approved the AED 12,000. Please send the contract and let's get the dates locked in. April 2-3 works for us.\n\nBest,\nSarah"},
+      {type:"email",date:"Mar 14",msg:"Sarah confirmed budget approved by finance.",summary:"Budget approved!",transcript:"Hi Raj, Good news — finance approved the AED 12,000. Please send the contract and let's get the dates locked in. April 2-3 works for us.\n\nBest,\nSarah"},
       {type:"email",date:"Mar 15",msg:"Contract sent for signature.",summary:"Contract sent",transcript:""},
-      {type:"note",date:"Mar 15",msg:"Ã¢ÂÂ Contract signed. Scheduled for April 2-3. Onboarding started.",summary:"DEAL CLOSED. Contract signed. Shoot dates: April 2-3. AED 12,000.",transcript:""}
+      {type:"note",date:"Mar 15",msg:"✅ Contract signed. Scheduled for April 2-3. Onboarding started.",summary:"DEAL CLOSED. Contract signed. Shoot dates: April 2-3. AED 12,000.",transcript:""}
     ]},
 ];
 
 const INIT_SOCIAL=[
-  {id:"s1",name:"@kapturise",platform:"Instagram",type:"main",token:"",status:"connected",followers:12400,assignedAgents:["layla","kai","zara"],purpose:"Company brand Ã¢ÂÂ content posting, portfolio showcases"},
-  {id:"s2",name:"Kapturise (Company Page)",platform:"LinkedIn",type:"main",token:"",status:"connected",followers:3200,assignedAgents:["layla","aiden"],purpose:"Company brand Ã¢ÂÂ articles, case studies, hiring posts"},
+  {id:"s1",name:"@kapturise",platform:"Instagram",type:"main",token:"",status:"connected",followers:12400,assignedAgents:["layla","kai","zara"],purpose:"Company brand — content posting, portfolio showcases"},
+  {id:"s2",name:"Kapturise (Company Page)",platform:"LinkedIn",type:"main",token:"",status:"connected",followers:3200,assignedAgents:["layla","aiden"],purpose:"Company brand — articles, case studies, hiring posts"},
   {id:"s3",name:"@kapturise",platform:"TikTok",type:"main",token:"",status:"connected",followers:5600,assignedAgents:["kai","mia"],purpose:"Short-form video content, trending challenges"},
   {id:"s7",name:"Kapturise",platform:"Facebook",type:"main",token:"",status:"connected",followers:8900,assignedAgents:["aiden"],purpose:"Ads, event pages, community"},
   {id:"s8",name:"Kapturise",platform:"YouTube",type:"main",token:"",status:"connected",followers:1400,assignedAgents:["ravi"],purpose:"Portfolio videos, behind-the-scenes, tutorials"},
-  {id:"s10",name:"Habeeb Furqan (Personal)",platform:"LinkedIn",type:"personal",token:"",status:"connected",followers:287000,assignedAgents:["layla"],purpose:"Ã¢ÂÂ Ã¯Â¸Â THOUGHT LEADERSHIP ONLY Ã¢ÂÂ no cold outreach. Posts, articles, high-value connections."},
-  {id:"s11",name:"@habeebfurqan",platform:"Instagram",type:"personal",token:"",status:"connected",followers:287000,assignedAgents:["layla","kai"],purpose:"Founder personal brand Ã¢ÂÂ behind-the-scenes, Dubai life, business stories"},
-  {id:"s12",name:"Omar Al-Rashid (Sales)",platform:"LinkedIn",type:"sales",token:"",status:"connected",followers:850,assignedAgents:["omar"],purpose:"Cold outreach Ã¢ÂÂ Real Estate, Corporates. 20 connections/day."},
-  {id:"s13",name:"Sara Kapoor (Sales)",platform:"LinkedIn",type:"sales",token:"",status:"connected",followers:620,assignedAgents:["sara"],purpose:"Cold outreach Ã¢ÂÂ F&B, Ecommerce. 20 connections/day."},
-  {id:"s14",name:"Raj Menon (Sales)",platform:"LinkedIn",type:"sales",token:"",status:"connected",followers:940,assignedAgents:["raj"],purpose:"Cold outreach Ã¢ÂÂ Events, Aggregators. 20 connections/day."},
-  {id:"s15",name:"Noor Al-Sayed (Sales)",platform:"Instagram",type:"sales",token:"",status:"connected",followers:410,assignedAgents:["noor"],purpose:"Instagram DM outreach Ã¢ÂÂ warm-up + DMs. 15 DMs/day."},
-  {id:"s16",name:"Ali Okonkwo (Sales)",platform:"Instagram",type:"sales",token:"",status:"connected",followers:290,assignedAgents:["ali"],purpose:"Instagram engagement Ã¢ÂÂ follows, likes, comments to warm up prospects"},
-  {id:"s4",name:"@kapturise.food",platform:"Instagram",type:"industry",token:"",status:"connected",followers:2100,assignedAgents:["sara"],purpose:"F&B niche account Ã¢ÂÂ food photography portfolio, restaurant outreach"},
-  {id:"s5",name:"@kapturise.events",platform:"Instagram",type:"industry",token:"",status:"connected",followers:1800,assignedAgents:["raj"],purpose:"Events niche Ã¢ÂÂ event coverage highlights, gala/conference content"},
-  {id:"s9",name:"@kapturise.realestate",platform:"Instagram",type:"industry",token:"",status:"pending",followers:0,assignedAgents:["omar"],purpose:"Real estate niche Ã¢ÂÂ property photography, drone shots, developer content"},
+  {id:"s10",name:"Habeeb Furqan (Personal)",platform:"LinkedIn",type:"personal",token:"",status:"connected",followers:287000,assignedAgents:["layla"],purpose:"⚠️ THOUGHT LEADERSHIP ONLY — no cold outreach. Posts, articles, high-value connections."},
+  {id:"s11",name:"@habeebfurqan",platform:"Instagram",type:"personal",token:"",status:"connected",followers:287000,assignedAgents:["layla","kai"],purpose:"Founder personal brand — behind-the-scenes, Dubai life, business stories"},
+  {id:"s12",name:"Omar Al-Rashid (Sales)",platform:"LinkedIn",type:"sales",token:"",status:"connected",followers:850,assignedAgents:["omar"],purpose:"Cold outreach — Real Estate, Corporates. 20 connections/day."},
+  {id:"s13",name:"Sara Kapoor (Sales)",platform:"LinkedIn",type:"sales",token:"",status:"connected",followers:620,assignedAgents:["sara"],purpose:"Cold outreach — F&B, Ecommerce. 20 connections/day."},
+  {id:"s14",name:"Raj Menon (Sales)",platform:"LinkedIn",type:"sales",token:"",status:"connected",followers:940,assignedAgents:["raj"],purpose:"Cold outreach — Events, Aggregators. 20 connections/day."},
+  {id:"s15",name:"Noor Al-Sayed (Sales)",platform:"Instagram",type:"sales",token:"",status:"connected",followers:410,assignedAgents:["noor"],purpose:"Instagram DM outreach — warm-up + DMs. 15 DMs/day."},
+  {id:"s16",name:"Ali Okonkwo (Sales)",platform:"Instagram",type:"sales",token:"",status:"connected",followers:290,assignedAgents:["ali"],purpose:"Instagram engagement — follows, likes, comments to warm up prospects"},
+  {id:"s4",name:"@kapturise.food",platform:"Instagram",type:"industry",token:"",status:"connected",followers:2100,assignedAgents:["sara"],purpose:"F&B niche account — food photography portfolio, restaurant outreach"},
+  {id:"s5",name:"@kapturise.events",platform:"Instagram",type:"industry",token:"",status:"connected",followers:1800,assignedAgents:["raj"],purpose:"Events niche — event coverage highlights, gala/conference content"},
+  {id:"s9",name:"@kapturise.realestate",platform:"Instagram",type:"industry",token:"",status:"pending",followers:0,assignedAgents:["omar"],purpose:"Real estate niche — property photography, drone shots, developer content"},
   {id:"s6",name:"@saltdxb",platform:"Instagram",type:"client",token:"",status:"pending",followers:45000,assignedAgents:["sara"],purpose:"Client account management (Salt restaurant)"},
 ];
 
 const INIT_CAMPAIGNS=[];
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ APP Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ═══ APP ═══
 export default function App({onSignOut,userEmail}){
   const[theme,setTheme]=useState("dark");
   const[view,setView]=useState(()=>{try{return localStorage.getItem("kap_view")||"dashboard";}catch{return "dashboard";}});
@@ -188,20 +251,20 @@ export default function App({onSignOut,userEmail}){
     personalTone:"Professional, profound, witty, occasionally comic. Industry thought leader. Authentic, not corporate. Trending-aware. First person voice.",
     founderName:"Habeeb Furqan",
     founderTitle:"Founder & CEO",
-    founderBio:"Habeeb Furqan is the Founder & CEO of Kapturise Ã¢ÂÂ the UAE's first on-demand photography/videography platform. Named Top 100 Influential People of Dubai by Ahlan. Awards: Tech Startup of the Year 2021 (Entrepreneur ME), App of the Year 2022, Media & Entertainment Startup of the Year 2023, Most Innovative Company 2023. 287K+ Instagram followers (@habeebfurqan). Previously: Global Head of Sales at Fetchr (helped scale Series A $11.5M Ã¢ÂÂ Series B $52M, overseeing 6 countries), Director of Growth at iMile Delivery, founded Exim Globalization (400+ clients in first months). Education: Seneca College Toronto (Business Admin), Osmania University (Commerce). NOT a photographer Ã¢ÂÂ he's a business builder, sales leader, and tech entrepreneur.",
+    founderBio:"Habeeb Furqan is the Founder & CEO of Kapturise — the UAE's first on-demand photography/videography platform. Named Top 100 Influential People of Dubai by Ahlan. Awards: Tech Startup of the Year 2021 (Entrepreneur ME), App of the Year 2022, Media & Entertainment Startup of the Year 2023, Most Innovative Company 2023. 287K+ Instagram followers (@habeebfurqan). Previously: Global Head of Sales at Fetchr (helped scale Series A $11.5M → Series B $52M, overseeing 6 countries), Director of Growth at iMile Delivery, founded Exim Globalization (400+ clients in first months). Education: Seneca College Toronto (Business Admin), Osmania University (Commerce). NOT a photographer — he's a business builder, sales leader, and tech entrepreneur.",
     founderExpertise:"Startup scaling, sales leadership, business development, Dubai/GCC market, logistics & tech, on-demand platforms, venture fundraising, team building across 6+ countries, partnership development, P&L management, going from 0 to 400+ photographers, navigating COVID pivots, regional expansion (UAE to Saudi)",
-    founderStyle:"Speaks as a CEO and serial entrepreneur. References his Fetchr journey ($52M raised), building Kapturise from scratch during COVID, scaling teams across countries. Talks about: startup life in Dubai, sales strategies that actually work, building on-demand platforms, the creative economy boom in MENA, team culture, winning awards, learning from failures. Witty, authentic, sometimes vulnerable about the grind. 287K followers means he knows what resonates Ã¢ÂÂ personal stories > corporate speak.",
-    founderDoNot:"NEVER write Habeeb's posts as if he is a photographer, videographer, or content creator. He is the BUSINESS/SALES person who built the platform. Don't say 'I shot this' or 'behind my lens' or 'my camera'. Instead: 'my team delivered', 'we created', 'our photographers captured'. Don't make him sound like a creative Ã¢ÂÂ he's the strategist and deal-maker. Reference his Fetchr experience and startup journey when relevant.",
+    founderStyle:"Speaks as a CEO and serial entrepreneur. References his Fetchr journey ($52M raised), building Kapturise from scratch during COVID, scaling teams across countries. Talks about: startup life in Dubai, sales strategies that actually work, building on-demand platforms, the creative economy boom in MENA, team culture, winning awards, learning from failures. Witty, authentic, sometimes vulnerable about the grind. 287K followers means he knows what resonates — personal stories > corporate speak.",
+    founderDoNot:"NEVER write Habeeb's posts as if he is a photographer, videographer, or content creator. He is the BUSINESS/SALES person who built the platform. Don't say 'I shot this' or 'behind my lens' or 'my camera'. Instead: 'my team delivered', 'we created', 'our photographers captured'. Don't make him sound like a creative — he's the strategist and deal-maker. Reference his Fetchr experience and startup journey when relevant.",
     themes:["Behind the Scenes (BTS)","Photography Tips & Techniques","Client Spotlights / Portfolio","Team Culture & Dubai Life","Industry Insights & Trends","Before/After Transformations","Gear & Equipment","Educational / How-To"],
     hashtagsIG:"#Kapturise #MakeItYourMoment #DubaiPhotography #DubaiContent #DubaiCreative #ContentCreation #Photography #Videography #DubaiLife #UAEBusiness",
     hashtagsLI:"#Photography #ContentCreation #DubaiBusiness #CreativeAgency #Kapturise #VisualContent #BrandBuilding #MarketingStrategy",
     hashtagsTT:"#dubaiphotography #kapturise #contentcreation #dubailife #makeitmoment #photography #behindthescenes",
     hashtagsYT:"Dubai Photography, Content Creation Agency, Professional Photography Dubai, Videography Dubai, Kapturise",
-    postStructure:"1. HOOK (first line Ã¢ÂÂ stop the scroll, question or bold statement)\n2. BODY (value Ã¢ÂÂ tip, story, insight, or showcase)\n3. CTA (ask: save, share, comment, DM, link in bio)\n\nKeep paragraphs short. Use line breaks. Emojis sparingly on IG, minimal on LI.",
+    postStructure:"1. HOOK (first line — stop the scroll, question or bold statement)\n2. BODY (value — tip, story, insight, or showcase)\n3. CTA (ask: save, share, comment, DM, link in bio)\n\nKeep paragraphs short. Use line breaks. Emojis sparingly on IG, minimal on LI.",
     companyLI:"Company page: Third person ('Kapturise delivered...'). Focus on: portfolio showcases, client results, team achievements, service launches, industry data. Professional but not boring. Every post should subtly sell.",
     personalLI:"Personal profile: First person ('I just wrapped a shoot...'). Focus on: personal learnings, hot takes on the industry, behind-the-scenes stories, failures + lessons, celebrations. Be opinionated. Be human. Share the journey.",
     doNot:"Never: use generic stock phrases, say 'excited to announce', post without a CTA, use more than 5 hashtags on LinkedIn, post blurry/low-quality images, tag people without permission, share client details without approval.",
-    colors:"Primary: Black + Red (#e8401e). The 'i' in Kapturise logo is RED Ã¢ÂÂ this is the brand accent. Secondary: White. Dark mode aesthetic in designs. Clean, minimal, high contrast. Logo: black text on dark background, red 'i' as the signature element.",
+    colors:"Primary: Black + Red (#e8401e). The 'i' in Kapturise logo is RED — this is the brand accent. Secondary: White. Dark mode aesthetic in designs. Clean, minimal, high contrast. Logo: black text on dark background, red 'i' as the signature element.",
   });
   const[agents,setAgents,aOk]=usePersist("k8-ag",INIT_AG);
   const[leads,setLeads,lOk]=usePersist("k10-ld",INIT_LEADS);
@@ -209,24 +272,24 @@ export default function App({onSignOut,userEmail}){
   const[socials,setSocials,sOk]=usePersist("k8-so2",INIT_SOCIAL);
   const[campaigns,setCampaigns,cOk]=usePersist("k7-cm",INIT_CAMPAIGNS);
   const[investors,setInvestors,ivOk]=usePersist("k10-inv",[
-    {id:1,fund:"Dubai Future District Fund",size:"$50M",thesis:"Creative economy, AI, media tech",stageFocus:"Seed / Series A",partner:"Khalid Al-Falasi",partnerTitle:"Managing Partner",email:"khalid@dfdf.ae",phone:"+971-4-555-1234",linkedin:"linkedin.com/in/khalid-alfalasi",checkMin:250000,checkMax:2000000,portfolio:"Studio City Media, Content Lab AI",stage:"Research",pitchDeck:"Not sent",ddStatus:"Ã¢ÂÂ",termSheet:"Ã¢ÂÂ",meetingNotes:"Identified via DIFC investor database. Focus on creative AI.",nextFollowUp:"2026-03-25",assignedTo:"yara",
+    {id:1,fund:"Dubai Future District Fund",size:"$50M",thesis:"Creative economy, AI, media tech",stageFocus:"Seed / Series A",partner:"Khalid Al-Falasi",partnerTitle:"Managing Partner",email:"khalid@dfdf.ae",phone:"+971-4-555-1234",linkedin:"linkedin.com/in/khalid-alfalasi",checkMin:250000,checkMax:2000000,portfolio:"Studio City Media, Content Lab AI",stage:"Research",pitchDeck:"Not sent",ddStatus:"—",termSheet:"—",meetingNotes:"Identified via DIFC investor database. Focus on creative AI.",nextFollowUp:"2026-03-25",assignedTo:"yara",
       interactions:[
-        {type:"email",date:"Mar 18",summary:"Cold outreach to Khalid Ã¢ÂÂ intro + 1-pager",transcript:"Subject: Kapturise Ã¢ÂÂ UAE's Award-Winning Creative Platform\n\nDear Khalid,\n\nI'm Yara from Kapturise, the UAE's first on-demand photography and videography platform. We've won Tech Startup of the Year (2021), App of the Year (2022), and Most Innovative Company (2023).\n\nWe're raising our next round to scale AI-powered content automation across the GCC. Your fund's focus on creative economy and AI aligns perfectly.\n\nKey metrics:\n- 400+ photographers on platform\n- Award-winning CEO (Habeeb Furqan, ex-Fetchr)\n- Revenue growing 3x YoY\n- Expanding to Saudi Arabia\n\nWould love 15 minutes to share our deck.\n\nBest,\nYara Sheikh\nInvestor Relations, Kapturise"},
+        {type:"email",date:"Mar 18",summary:"Cold outreach to Khalid — intro + 1-pager",transcript:"Subject: Kapturise — UAE's Award-Winning Creative Platform\n\nDear Khalid,\n\nI'm Yara from Kapturise, the UAE's first on-demand photography and videography platform. We've won Tech Startup of the Year (2021), App of the Year (2022), and Most Innovative Company (2023).\n\nWe're raising our next round to scale AI-powered content automation across the GCC. Your fund's focus on creative economy and AI aligns perfectly.\n\nKey metrics:\n- 400+ photographers on platform\n- Award-winning CEO (Habeeb Furqan, ex-Fetchr)\n- Revenue growing 3x YoY\n- Expanding to Saudi Arabia\n\nWould love 15 minutes to share our deck.\n\nBest,\nYara Sheikh\nInvestor Relations, Kapturise"},
         {type:"note",date:"Mar 19",summary:"Khalid viewed LinkedIn profile. No email reply yet.",transcript:""}
       ]},
-    {id:2,fund:"Wamda Capital",size:"$120M",thesis:"MENA tech, B2B SaaS, marketplaces",stageFocus:"Series A/B",partner:"Faris Zaher",partnerTitle:"Investment Director",email:"faris@wamda.com",phone:"+971-50-888-5678",linkedin:"linkedin.com/in/fariszaher",checkMin:500000,checkMax:5000000,portfolio:"Careem, Fetchr, Anghami",stage:"Connect",pitchDeck:"Not sent",ddStatus:"Ã¢ÂÂ",termSheet:"Ã¢ÂÂ",meetingNotes:"Met at STEP Conference 2025. Expressed interest in creative SaaS.",nextFollowUp:"2026-03-28",assignedTo:"marcus",
+    {id:2,fund:"Wamda Capital",size:"$120M",thesis:"MENA tech, B2B SaaS, marketplaces",stageFocus:"Series A/B",partner:"Faris Zaher",partnerTitle:"Investment Director",email:"faris@wamda.com",phone:"+971-50-888-5678",linkedin:"linkedin.com/in/fariszaher",checkMin:500000,checkMax:5000000,portfolio:"Careem, Fetchr, Anghami",stage:"Connect",pitchDeck:"Not sent",ddStatus:"—",termSheet:"—",meetingNotes:"Met at STEP Conference 2025. Expressed interest in creative SaaS.",nextFollowUp:"2026-03-28",assignedTo:"marcus",
       interactions:[
-        {type:"meeting",date:"Mar 10",summary:"Met at STEP Conference Ã¢ÂÂ 10 min intro conversation",transcript:"Marcus: Hi Faris, Marcus Chen from Kapturise. Habeeb mentioned you'd be here.\n\nFaris: Yes! I've actually heard of Kapturise. The photography app, right?\n\nMarcus: Exactly Ã¢ÂÂ we started as on-demand photography but we've evolved into a full creative production platform. Photography, videography, talent, content creation, and now AI-powered sales automation.\n\nFaris: Interesting. What's the AI angle?\n\nMarcus: We've built an AI agent system that automates the entire sales cycle Ã¢ÂÂ from finding prospects on Instagram to sending personalized DMs, making calls, and generating proposals. 17 AI agents working 24/7.\n\nFaris: That's compelling. We've been looking at creative economy plays in MENA. What stage are you at?\n\nMarcus: We're raising Series A. Revenue growing 3x YoY, 400+ photographers, multiple awards including Startup of the Year.\n\nFaris: Send me the deck. I'll review with our team and we can set up a proper meeting.\n\nMarcus: Perfect. I'll email it this week. Great meeting you, Faris.\n\nFaris: Likewise. Good luck with the round."},
-        {type:"email",date:"Mar 12",summary:"Sent pitch deck v2 + financials summary to Faris",transcript:"Subject: Kapturise Deck Ã¢ÂÂ Following up from STEP\n\nHi Faris,\n\nGreat meeting you at STEP Conference. As discussed, attached is our pitch deck (v2) and a financial summary.\n\nHighlights:\n- Revenue: AED 2.4M (2025), projecting AED 7.2M (2026)\n- 400+ photographers, 150+ business clients\n- Unit economics: AED 800 LTV, AED 120 CAC\n- Raising: $2-5M Series A\n\nHappy to schedule a deeper dive whenever works for your team.\n\nBest,\nMarcus Chen\nPitch Strategist, Kapturise"},
-        {type:"email",date:"Mar 15",summary:"Faris replied Ã¢ÂÂ wants to schedule 45-min deep dive with investment team",transcript:"Hi Marcus,\n\nThanks for the deck. I've shared it with our investment committee and there's interest.\n\nCan we schedule a 45-minute video call next week? I'd like to bring our Head of Investments and one of our portfolio advisors who has media industry experience.\n\nWe'd want to understand:\n1. The AI agent technology stack\n2. Competitive landscape in MENA\n3. Path to Saudi expansion\n4. Team composition and hiring plans\n\nPlease suggest some times.\n\nBest,\nFaris"},
-        {type:"note",date:"Mar 16",summary:"Ã°ÂÂÂ¨ HIGH PRIORITY Ã¢ÂÂ Wamda wants deep dive. Schedule for next week. Prep: AI demo, competitor analysis, Saudi roadmap.",transcript:""}
+        {type:"meeting",date:"Mar 10",summary:"Met at STEP Conference — 10 min intro conversation",transcript:"Marcus: Hi Faris, Marcus Chen from Kapturise. Habeeb mentioned you'd be here.\n\nFaris: Yes! I've actually heard of Kapturise. The photography app, right?\n\nMarcus: Exactly — we started as on-demand photography but we've evolved into a full creative production platform. Photography, videography, talent, content creation, and now AI-powered sales automation.\n\nFaris: Interesting. What's the AI angle?\n\nMarcus: We've built an AI agent system that automates the entire sales cycle — from finding prospects on Instagram to sending personalized DMs, making calls, and generating proposals. 17 AI agents working 24/7.\n\nFaris: That's compelling. We've been looking at creative economy plays in MENA. What stage are you at?\n\nMarcus: We're raising Series A. Revenue growing 3x YoY, 400+ photographers, multiple awards including Startup of the Year.\n\nFaris: Send me the deck. I'll review with our team and we can set up a proper meeting.\n\nMarcus: Perfect. I'll email it this week. Great meeting you, Faris.\n\nFaris: Likewise. Good luck with the round."},
+        {type:"email",date:"Mar 12",summary:"Sent pitch deck v2 + financials summary to Faris",transcript:"Subject: Kapturise Deck — Following up from STEP\n\nHi Faris,\n\nGreat meeting you at STEP Conference. As discussed, attached is our pitch deck (v2) and a financial summary.\n\nHighlights:\n- Revenue: AED 2.4M (2025), projecting AED 7.2M (2026)\n- 400+ photographers, 150+ business clients\n- Unit economics: AED 800 LTV, AED 120 CAC\n- Raising: $2-5M Series A\n\nHappy to schedule a deeper dive whenever works for your team.\n\nBest,\nMarcus Chen\nPitch Strategist, Kapturise"},
+        {type:"email",date:"Mar 15",summary:"Faris replied — wants to schedule 45-min deep dive with investment team",transcript:"Hi Marcus,\n\nThanks for the deck. I've shared it with our investment committee and there's interest.\n\nCan we schedule a 45-minute video call next week? I'd like to bring our Head of Investments and one of our portfolio advisors who has media industry experience.\n\nWe'd want to understand:\n1. The AI agent technology stack\n2. Competitive landscape in MENA\n3. Path to Saudi expansion\n4. Team composition and hiring plans\n\nPlease suggest some times.\n\nBest,\nFaris"},
+        {type:"note",date:"Mar 16",summary:"🚨 HIGH PRIORITY — Wamda wants deep dive. Schedule for next week. Prep: AI demo, competitor analysis, Saudi roadmap.",transcript:""}
       ]},
   ]);
-  const[scripts,setScripts,skOk]=usePersist("k7-scripts",{emails:[{id:1,name:"Cold Email #1 Ã¢ÂÂ Portfolio Intro",subject:"Elevate your brand with professional content",body:"Hi {name},\n\nI came across {company} and loved what you're building. We help businesses like yours in {industry} create stunning visual content.\n\nWould love to send over our portfolio Ã¢ÂÂ 2 minutes of your time?\n\nBest,\nKapturise Team",channel:"email",assignedAgents:[],assignedCampaigns:[]},{id:2,name:"Follow-Up #2 Ã¢ÂÂ Case Study",subject:"How {similar_company} grew 40% with us",body:"Hi {name},\n\nFollowing up. Wanted to share how we helped a {industry} brand in Dubai achieve [specific result].\n\n[Link to case study]\n\nWorth a quick 15-min call?\n\nBest,\nKapturise",channel:"email",assignedAgents:[],assignedCampaigns:[]},{id:3,name:"Breakup Email #3",subject:"{name}, should I close your file?",body:"Hi {name},\n\nI've reached out a couple of times. If timing isn't right, totally understand.\n\nIf you ever need photography or content in Dubai Ã¢ÂÂ we're here.\n\nKapturise Team",channel:"email",assignedAgents:[],assignedCampaigns:[]}],linkedin:[{id:10,name:"Connection Request",body:"Hi {name} Ã¢ÂÂ I lead content partnerships at Kapturise, Dubai creative agency. Noticed {company} is doing great work in {industry}. Would love to connect!",channel:"linkedin",assignedAgents:[],assignedCampaigns:[]},{id:11,name:"Post: Portfolio Showcase",body:"Ã°ÂÂÂ¬ Just wrapped an incredible shoot for [client] in Dubai.\n\n3 photographers. 2 videographers. 200+ photos. 3 videos.\n\nResult? Social engagement jumped 45% in week one.\n\n#DubaiPhotography #ContentCreation #Kapturise",channel:"linkedin",assignedAgents:[],assignedCampaigns:[]}],dms:[{id:20,name:"IG DM Ã¢ÂÂ F&B",body:"Hey {name}! Ã°ÂÂÂ Your new menu looks amazing. We specialize in food photography for Dubai restaurants. Mind if I send our work?",channel:"instagram",assignedAgents:[],assignedCampaigns:[]},{id:21,name:"IG DM Ã¢ÂÂ Events",body:"Hi {name}! Event coming up? We do full coverage (photo + video + same-day highlights). Happy to share our portfolio! Ã°ÂÂÂ¸",channel:"instagram",assignedAgents:[],assignedCampaigns:[]}],calls:[{id:30,name:"Cold Call Ã¢ÂÂ General",body:"Hi {name}, this is [agent] from Kapturise. We're a Dubai creative agency for {industry}.\n\nI noticed {company} [observation]. We help businesses create professional content.\n\nDo you have 2 minutes?\n\n[If yes Ã¢ÂÂ SPIN questions]\n[If busy Ã¢ÂÂ 'When works better? I'll email our portfolio.']",channel:"phone",assignedAgents:[],assignedCampaigns:[]}]});
+  const[scripts,setScripts,skOk]=usePersist("k7-scripts",{emails:[{id:1,name:"Cold Email #1 — Portfolio Intro",subject:"Elevate your brand with professional content",body:"Hi {name},\n\nI came across {company} and loved what you're building. We help businesses like yours in {industry} create stunning visual content.\n\nWould love to send over our portfolio — 2 minutes of your time?\n\nBest,\nKapturise Team",channel:"email",assignedAgents:[],assignedCampaigns:[]},{id:2,name:"Follow-Up #2 — Case Study",subject:"How {similar_company} grew 40% with us",body:"Hi {name},\n\nFollowing up. Wanted to share how we helped a {industry} brand in Dubai achieve [specific result].\n\n[Link to case study]\n\nWorth a quick 15-min call?\n\nBest,\nKapturise",channel:"email",assignedAgents:[],assignedCampaigns:[]},{id:3,name:"Breakup Email #3",subject:"{name}, should I close your file?",body:"Hi {name},\n\nI've reached out a couple of times. If timing isn't right, totally understand.\n\nIf you ever need photography or content in Dubai — we're here.\n\nKapturise Team",channel:"email",assignedAgents:[],assignedCampaigns:[]}],linkedin:[{id:10,name:"Connection Request",body:"Hi {name} — I lead content partnerships at Kapturise, Dubai creative agency. Noticed {company} is doing great work in {industry}. Would love to connect!",channel:"linkedin",assignedAgents:[],assignedCampaigns:[]},{id:11,name:"Post: Portfolio Showcase",body:"🎬 Just wrapped an incredible shoot for [client] in Dubai.\n\n3 photographers. 2 videographers. 200+ photos. 3 videos.\n\nResult? Social engagement jumped 45% in week one.\n\n#DubaiPhotography #ContentCreation #Kapturise",channel:"linkedin",assignedAgents:[],assignedCampaigns:[]}],dms:[{id:20,name:"IG DM — F&B",body:"Hey {name}! 👋 Your new menu looks amazing. We specialize in food photography for Dubai restaurants. Mind if I send our work?",channel:"instagram",assignedAgents:[],assignedCampaigns:[]},{id:21,name:"IG DM — Events",body:"Hi {name}! Event coming up? We do full coverage (photo + video + same-day highlights). Happy to share our portfolio! 📸",channel:"instagram",assignedAgents:[],assignedCampaigns:[]}],calls:[{id:30,name:"Cold Call — General",body:"Hi {name}, this is [agent] from Kapturise. We're a Dubai creative agency for {industry}.\n\nI noticed {company} [observation]. We help businesses create professional content.\n\nDo you have 2 minutes?\n\n[If yes → SPIN questions]\n[If busy → 'When works better? I'll email our portfolio.']",channel:"phone",assignedAgents:[],assignedCampaigns:[]}]});
   const[logs,setLogs]=useState([{id:1,t:"Now",a:"omar",m:"Omar: 5 Real Estate prospects researched"},{id:2,t:"5m",a:"sara",m:"Sara: 4 F&B DMs sent"},{id:3,t:"15m",a:"zara",m:"Zara: 3 posts published"},{id:4,t:"1h",a:"maya",m:"Maya: 3 calls completed"}]);
   const[followUps,setFollowUps,fuOk]=usePersist("k8-fu",[
-    {id:1,leadId:3,leadName:"Grand Events LLC",contact:"Priya Sharma",phone:"+971-55-991-4567",type:"call",date:"2026-03-25",time:"10:00",agent:"raj",notes:"Priya said to call back after CEO review. Proposal was AED 18K for gala.",prevNotes:["Mar 18: Proposal sent Ã¢ÂÂ 2P+2V+8hrs+3videos+2talent","Mar 17: Discovery call 22 min Ã¢ÂÂ discussed 500 guests at Atlantis","Mar 15: Cold email sent Ã¢ÂÂ event portfolio"],status:"pending"},
-    {id:2,leadId:5,leadName:"The Luxury Closet",contact:"Nina Rossi",phone:"+971-4-330-1100",type:"call",date:"2026-03-24",time:"14:00",agent:"sara",notes:"Counter-offered AED 20K. Waiting for response Ã¢ÂÂ call to push.",prevNotes:["Mar 15: Call Ã¢ÂÂ Nina says budget AED 18K, negotiating","Mar 13: Proposal sent AED 22K","Mar 12: WhatsApp call 15 min Ã¢ÂÂ lookbook + influencer"],status:"pending"},
+    {id:1,leadId:3,leadName:"Grand Events LLC",contact:"Priya Sharma",phone:"+971-55-991-4567",type:"call",date:"2026-03-25",time:"10:00",agent:"raj",notes:"Priya said to call back after CEO review. Proposal was AED 18K for gala.",prevNotes:["Mar 18: Proposal sent — 2P+2V+8hrs+3videos+2talent","Mar 17: Discovery call 22 min — discussed 500 guests at Atlantis","Mar 15: Cold email sent — event portfolio"],status:"pending"},
+    {id:2,leadId:5,leadName:"The Luxury Closet",contact:"Nina Rossi",phone:"+971-4-330-1100",type:"call",date:"2026-03-24",time:"14:00",agent:"sara",notes:"Counter-offered AED 20K. Waiting for response — call to push.",prevNotes:["Mar 15: Call — Nina says budget AED 18K, negotiating","Mar 13: Proposal sent AED 22K","Mar 12: WhatsApp call 15 min — lookbook + influencer"],status:"pending"},
   ]);
   const[socialOutreach,setSocialOutreach,soOk]=usePersist("k8-so",[
     {id:1,handle:"@saltdxb",platform:"Instagram",businessName:"Salt Restaurant",industry:"F&B",aiSuggested:"F&B",confirmed:true,agent:"sara",actions:[{date:"Mar 17",type:"follow",note:"Followed @saltdxb"},{date:"Mar 18",type:"comment",note:"Commented on burger post: 'This looks incredible!'"},{date:"Mar 19",type:"dm",note:"DM sent: portfolio intro",response:"Replied: 'Send portfolio'"},{date:"Mar 19",type:"dm",note:"Sent food photography portfolio link",response:"Viewed, no reply yet"}],status:"warm",lastContact:"Mar 19"},
@@ -236,7 +299,7 @@ export default function App({onSignOut,userEmail}){
   const T=TH[theme];
   const addLog=(a,m)=>setLogs(p=>[{id:Date.now(),t:"Now",a,m},...p.slice(0,99)]);
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ PROVIDER-AWARE AI CALL Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ PROVIDER-AWARE AI CALL ═══
   const LLM_PROVIDERS={
     anthropic:{name:"Claude (Anthropic)",url:"https://api.anthropic.com/v1/messages",model:"claude-sonnet-4-20250514",
       call:async(s,m,key)=>{const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":key||"","anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4096,system:s,messages:[{role:"user",content:m}]})});const d=await r.json();if(d.error)throw new Error(d.error.message);return d.content?.map(b=>b.text||"").filter(Boolean).join("\n")||"No response";}},
@@ -250,7 +313,7 @@ export default function App({onSignOut,userEmail}){
       call:async(s,m,key)=>{const r=await fetch("https://api.groq.com/openai/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${key}`},body:JSON.stringify({model:"llama-3.3-70b-versatile",max_tokens:4096,messages:[{role:"system",content:s},{role:"user",content:m}]})});const d=await r.json();if(d.error)throw new Error(d.error.message);return d.choices?.[0]?.message?.content||"No response";}},
   };
 
-  // Smart AI call Ã¢ÂÂ routes to selected provider, falls back to Claude
+  // Smart AI call — routes to selected provider, falls back to Claude
   const smartAI=async(s,m,taskType)=>{
     const prefKey=taskType==="prospecting"?"llmProspecting":taskType==="proposals"?"llmProposals":taskType==="scripts"?"llmScripts":"llm";
     const provider=providerPrefs[prefKey]||"anthropic";
@@ -260,18 +323,18 @@ export default function App({onSignOut,userEmail}){
     try{return await prov.call(s,m,key);}catch(e){return`${prov.name} Error: ${e.message}`;}
   };
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ PROSPECT INTELLIGENCE (ML-like scoring via Claude) Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ PROSPECT INTELLIGENCE (ML-like scoring via Claude) ═══
   const[approachedRegistry,setApproachedRegistry,arOk]=usePersist("k8-ar",{});
   // Registry: { "@handle": { agent: "omar", date: "2026-03-20", channel: "instagram" }, "company@email": { agent: "sara", ... } }
   const isApproached=(identifier)=>!!approachedRegistry[identifier?.toLowerCase()];
   const markApproached=(identifier,agentId,channel)=>setApproachedRegistry(p=>({...p,[identifier?.toLowerCase()]:{agent:agentId,date:new Date().toISOString().split("T")[0],channel}}));
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ HUMAN ESCALATION FLAGS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-  const flaggedLeads=leads.filter(l=>["Proposal","Negotiation","Close"].includes(l.stage)||(l.val||0)>=10000||(l.logs||[]).some(log=>(log.msg||"").includes("Ã°ÂÂÂ¨")));
+  // ═══ HUMAN ESCALATION FLAGS ═══
+  const flaggedLeads=leads.filter(l=>["Proposal","Negotiation","Close"].includes(l.stage)||(l.val||0)>=10000||(l.logs||[]).some(log=>(log.msg||"").includes("🚨")));
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ PROPOSAL TEMPLATES Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ PROPOSAL TEMPLATES ═══
   const[proposalTemplates,setProposalTemplates,ptOk]=usePersist("k8-pt",[
-    {id:1,name:"Standard Proposal Ã¢ÂÂ 3 Tiers",sections:[
+    {id:1,name:"Standard Proposal — 3 Tiers",sections:[
       {title:"About Kapturise",body:"Kapturise is Dubai's premium creative production agency. We specialize in photography, videography, talent management, and content creation for brands that want to stand out."},
       {title:"Understanding Your Needs",body:"Based on our conversation, {company} requires {requirements}. We understand the importance of {key_need} for your brand."},
       {title:"Tier 1: One-Off Project",body:"Service: {service_name}\nDeliverables: {deliverables}\nTimeline: {timeline}\nInvestment: {tier1_price} AED +VAT"},
@@ -282,7 +345,7 @@ export default function App({onSignOut,userEmail}){
     ]},
   ]);
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ AI PROSPECT SCORER Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ AI PROSPECT SCORER ═══
   async function scoreProspect(prospect){
     const wonDeals=leads.filter(l=>l.stage==="Close");
     const wonProfile=wonDeals.length>0?`Past won deals:\n${wonDeals.map(w=>`${w.name}(${w.ind}) ${w.val}AED ${w.serviceType}`).join("\n")}`:"No past data yet.";
@@ -293,7 +356,7 @@ export default function App({onSignOut,userEmail}){
     try{return JSON.parse(r.replace(/```json|```/g,"").trim());}catch{return{score:50,reasoning:"Unable to analyze",suggestedService:"general",urgency:"medium",suggestedApproach:"Standard outreach"};}
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ AUTO FOLLOW-UP CREATOR Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ AUTO FOLLOW-UP CREATOR ═══
   function autoCreateFollowUp(agentId,leadName,contact,phone,notes,daysFromNow=3){
     const date=new Date();date.setDate(date.getDate()+daysFromNow);
     const fu={id:Date.now(),leadId:0,leadName,contact,phone,type:"call",date:date.toISOString().split("T")[0],time:"10:00",agent:agentId,notes,prevNotes:[`Auto-created from agent interaction on ${new Date().toLocaleDateString()}`],status:"pending"};
@@ -301,9 +364,9 @@ export default function App({onSignOut,userEmail}){
     return fu;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ NANO BANANA (Gemini) IMAGE GENERATION Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ NANO BANANA (Gemini) IMAGE GENERATION ═══
   async function generateImage(prompt){
-    if(!apiKeys.gemini)return{error:"No Gemini API key. Go to Integrations Ã¢ÂÂ add your key."};
+    if(!apiKeys.gemini)return{error:"No Gemini API key. Go to Integrations → add your key."};
     try{
       const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKeys.gemini}`,{
         method:"POST",headers:{"Content-Type":"application/json"},
@@ -318,7 +381,7 @@ export default function App({onSignOut,userEmail}){
     }catch(e){return{error:e.message};}
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ PHONE CALLS (Vapi primary, Bland.ai fallback) Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ PHONE CALLS (Vapi primary, Bland.ai fallback) ═══
   async function sendOutreachEmail(to,subject,body,agentId){
     const ac=AGENT_CONTACTS[agentId]||{email:"contact@kapturise.com",name:"Kapturise Agent"};
     try{
@@ -344,11 +407,11 @@ export default function App({onSignOut,userEmail}){
     }catch(e){showToast("Call error: "+e.message,"info");}
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ OPENAI TTS Ã¢ÂÂ text-to-speech with per-agent voice Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ OPENAI TTS — text-to-speech with per-agent voice ═══
   async function speakText(text,agentId){
     const voiceName=VOICE_MAP[agentId]||"alloy";
     const key=apiKeys.openai;
-    if(!key)return{error:"No OpenAI API key. Go to Integrations Ã¢ÂÂ add your key."};
+    if(!key)return{error:"No OpenAI API key. Go to Integrations → add your key."};
     try{
       const r=await fetch("https://api.openai.com/v1/audio/speech",{
         method:"POST",headers:{"Authorization":`Bearer ${key}`,"Content-Type":"application/json"},
@@ -363,10 +426,10 @@ export default function App({onSignOut,userEmail}){
     }catch(e){return{error:e.message};}
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ VAPI PHONE CALLS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ VAPI PHONE CALLS ═══
   
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ CRM EXPORT Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ CRM EXPORT ═══
   function exportLeadsCSV(){
     const headers=["Company","Industry","Stage","Contact","Title","Email","Phone","Instagram","Website","Value","Assigned Agent","Service","Source"];
     const rows=leads.map(l=>[l.name,l.ind,l.stage,l.contactName,l.contactTitle,l.email,l.phone,l.ig,l.website,l.val,agents.find(a=>a.id===l.assignedTo)?.name||"",pricing.find(p=>p.id===l.serviceType)?.name||"",l.src].map(v=>`"${(v||"").toString().replace(/"/g,'""')}"`).join(","));
@@ -386,12 +449,12 @@ export default function App({onSignOut,userEmail}){
   const rc=r=>T[ROLES[r]?.color]||T.br;
   const nv=(a,c)=>({display:"flex",alignItems:"center",gap:9,padding:"8px 12px",margin:"1px 6px",borderRadius:7,cursor:"pointer",fontSize:12.5,fontWeight:a?600:400,color:a?T.tx:T.ts,background:a?`${c||T.br}10`:"transparent",borderLeft:a?`2px solid ${c||T.br}`:"2px solid transparent",transition:"all .12s"});
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ AVATAR HELPER Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ AVATAR HELPER ═══
   const Av=({a,size=32})=>{const[err,setErr]=useState(false);return <div style={{width:size,height:size,borderRadius:size/3,overflow:"hidden",flexShrink:0,background:T.sa,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.55}}>
-    {a.pic&&!err?<img src={a.pic} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={()=>setErr(true)} />:<span>{a.av||"Ã°ÂÂ¤Â"}</span>}
+    {a.pic&&!err?<img src={a.pic} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={()=>setErr(true)} />:<span>{a.av||"🤖"}</span>}
   </div>;};
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ COMPANY INFO (editable, shared to all agents) Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ COMPANY INFO (editable, shared to all agents) ═══
   const[company,setCompany,coOk]=usePersist("k7-co",{
     name:"Kapturise",tagline:"Make it your moment.",
     owner:"[Your Name]",ownerTitle:"Founder & CEO",ownerEmail:"hello@kapturise.com",ownerPhone:"+971-XX-XXX-XXXX",
@@ -404,19 +467,19 @@ export default function App({onSignOut,userEmail}){
   });
 
   const buildSys=(ag)=>{const cfg=ag.config||DEF_CFG;const pCtx=pricing.map(p=>`${p.icon} ${p.name}: Base ${p.base} ${p.unit} includes ${p.includes.map(i=>`${i.base} ${i.l}`).join(", ")}. Add-ons: ${p.addons.map(a=>`${a.l} +${a.perUnit} AED`).join(", ")}`).join("\n");
-    const coCtx=`COMPANY: ${company.name} Ã¢ÂÂ ${company.tagline}\nOwner: ${company.owner} (${company.ownerTitle})\nEmail: ${company.email} | Phone: ${company.phone} | Web: ${company.website}\nAddress: ${company.address}\nIG: ${company.instagram} | LI: ${company.linkedin}\nAbout: ${company.about}\nUSP: ${company.usp}`;
+    const coCtx=`COMPANY: ${company.name} — ${company.tagline}\nOwner: ${company.owner} (${company.ownerTitle})\nEmail: ${company.email} | Phone: ${company.phone} | Web: ${company.website}\nAddress: ${company.address}\nIG: ${company.instagram} | LI: ${company.linkedin}\nAbout: ${company.about}\nUSP: ${company.usp}`;
     const brandCtx=`BRAND VOICE:\nCompany tone: ${brand.companyTone}\nPersonal/founder tone: ${brand.personalTone}\nFOUNDER PROFILE: ${brand.founderName} (${brand.founderTitle}): ${brand.founderBio}\nFounder expertise: ${brand.founderExpertise}\nFounder posting style: ${brand.founderStyle}\nFOUNDER RULES: ${brand.founderDoNot}\nContent themes: ${brand.themes.join(", ")}\nPost structure: ${brand.postStructure}\nCompany LinkedIn: ${brand.companyLI}\nPersonal LinkedIn: ${brand.personalLI}\nIG hashtags: ${brand.hashtagsIG}\nLI hashtags: ${brand.hashtagsLI}\nTikTok hashtags: ${brand.hashtagsTT}\nYT keywords: ${brand.hashtagsYT}\nBrand colors: ${brand.colors}\nDO NOT: ${brand.doNot}`;
-    return `You are ${ag.name}, ${ag.title} at ${company.name}. ${ROLES[ag.role]?.sys||""}\n${coCtx}\n${brandCtx}\nBackground: ${ag.bg}. ${ag.eth}.\nTargeting: ${cfg.targeting.industries.join(", ")} in ${cfg.targeting.locations.join(", ")}\nSignals: ${cfg.targeting.signals.join(", ")}\nCollect: ${cfg.dataToCollect.join("; ")}\nSequence: ${cfg.outreachSequence.map(s=>`D${s.day}[${s.ch}]${s.act}`).join("Ã¢ÂÂ")}\nKPIs Daily: ${cfg.kpis.daily.map(k=>`${k.m}:${k.t}`).join(",")}\nPRICING:\n${pCtx}\nPitch: ${cfg.pitchFocus}\nAlways pitch retainers. Use AED. Be specific.`;};
+    return `You are ${ag.name}, ${ag.title} at ${company.name}. ${ROLES[ag.role]?.sys||""}\n${coCtx}\n${brandCtx}\nBackground: ${ag.bg}. ${ag.eth}.\nTargeting: ${cfg.targeting.industries.join(", ")} in ${cfg.targeting.locations.join(", ")}\nSignals: ${cfg.targeting.signals.join(", ")}\nCollect: ${cfg.dataToCollect.join("; ")}\nSequence: ${cfg.outreachSequence.map(s=>`D${s.day}[${s.ch}]${s.act}`).join("→")}\nKPIs Daily: ${cfg.kpis.daily.map(k=>`${k.m}:${k.t}`).join(",")}\nPRICING:\n${pCtx}\nPitch: ${cfg.pitchFocus}\nAlways pitch retainers. Use AED. Be specific.`;};
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ PRICING CALCULATOR Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ PRICING CALCULATOR ═══
   function PricingCalc({svc}){
     const[qty,setQty]=useState({});
     const getQ=k=>qty[k]||0;
     const total=svc.base+svc.addons.reduce((sum,a)=>sum+(getQ(a.k)*a.perUnit),0);
     return <div style={{background:T.sa,borderRadius:8,padding:12,marginTop:10}}>
-      <div style={{fontSize:11,fontWeight:600,color:T.tx,marginBottom:8}}>Ã°ÂÂÂ° Price Calculator</div>
+      <div style={{fontSize:11,fontWeight:600,color:T.tx,marginBottom:8}}>💰 Price Calculator</div>
       <div style={{fontSize:20,fontWeight:800,color:T.em,marginBottom:8}}>{total.toLocaleString()} <span style={{fontSize:12,fontWeight:500,color:T.td}}>{svc.unit}</span></div>
-      <div style={{fontSize:10,color:T.td,marginBottom:8}}>Base: {svc.base.toLocaleString()} {svc.unit} Ã¢ÂÂ includes {svc.includes.map(i=>`${i.base} ${i.l}`).join(", ")}</div>
+      <div style={{fontSize:10,color:T.td,marginBottom:8}}>Base: {svc.base.toLocaleString()} {svc.unit} — includes {svc.includes.map(i=>`${i.base} ${i.l}`).join(", ")}</div>
       {svc.addons.map(a=><div key={a.k} style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
         <span style={{fontSize:11,color:T.ts,flex:1}}>{a.l} (+{a.perUnit} AED)</span>
         <button onClick={()=>setQty(q=>({...q,[a.k]:Math.max((q[a.k]||0)-1,0)}))} style={{...bt(T.td),padding:"2px 8px",fontSize:11}}>-</button>
@@ -426,8 +489,8 @@ export default function App({onSignOut,userEmail}){
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ DASHBOARD Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ ALL AGENTS PAGE Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ DASHBOARD ═══
+  // ═══ ALL AGENTS PAGE ═══
   function AllAgents(){
     const byRole={};Object.keys(ROLES).forEach(r=>{byRole[r]=agents.filter(a=>a.role===r);});
     return <div>
@@ -455,7 +518,7 @@ export default function App({onSignOut,userEmail}){
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ COMPANY / ABOUT PAGE Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ COMPANY / ABOUT PAGE ═══
   function CompanyPage(){
     const editMode=coEditMode,setEditMode=setCoEditMode;
     const F2=({label,field,type})=><div style={{marginBottom:8}}>
@@ -463,7 +526,7 @@ export default function App({onSignOut,userEmail}){
       {editMode?type==="textarea"
         ?<textarea style={{...ip,minHeight:60,resize:"vertical"}} defaultValue={company[field]||""} data-cofield={field} key={field+(editMode?"e":"v")} />
         :<input style={ip} defaultValue={company[field]||""} data-cofield={field} key={field+(editMode?"e":"v")} />
-      :<div style={{fontSize:12.5,color:T.tx}}>{company[field]||"Ã¢ÂÂ"}</div>}
+      :<div style={{fontSize:12.5,color:T.tx}}>{company[field]||"—"}</div>}
     </div>;
     return <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -474,31 +537,31 @@ export default function App({onSignOut,userEmail}){
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div style={cd}>
-          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ¢ Business Details</div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>🏢 Business Details</div>
           <F2 label="Company Name" field="name" /><F2 label="Tagline" field="tagline" /><F2 label="About" field="about" type="textarea" /><F2 label="USP / Pitch" field="usp" type="textarea" /><F2 label="Founded" field="founded" /><F2 label="Team Size" field="team" />
         </div>
         <div style={cd}>
-          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ¤ Owner / Founder</div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>👤 Owner / Founder</div>
           <F2 label="Full Name" field="owner" /><F2 label="Title" field="ownerTitle" /><F2 label="Email" field="ownerEmail" /><F2 label="Phone" field="ownerPhone" />
         </div>
         <div style={cd}>
-          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ Contact Info</div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>📞 Contact Info</div>
           <F2 label="Business Email" field="email" /><F2 label="Business Phone" field="phone" /><F2 label="Website" field="website" /><F2 label="Address" field="address" /><F2 label="Trade License" field="license" />
         </div>
         <div style={cd}>
-          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ± Social Media</div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>📱 Social Media</div>
           <F2 label="Instagram" field="instagram" /><F2 label="LinkedIn" field="linkedin" /><F2 label="TikTok" field="tiktok" /><F2 label="YouTube" field="youtube" /><F2 label="Facebook" field="facebook" />
         </div>
       </div>
 
       <div style={{...cd,borderColor:`${T.sk}30`,marginTop:4}}>
-        <div style={{fontSize:12,fontWeight:600,color:T.sk,marginBottom:6}}>Ã¢ÂÂ¹Ã¯Â¸Â How agents use this info</div>
+        <div style={{fontSize:12,fontWeight:600,color:T.sk,marginBottom:6}}>ℹ️ How agents use this info</div>
         <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>Every agent's AI system prompt includes: company name, tagline, owner info, contact details, website, social handles, about text, and USP. When Omar writes a cold email, he signs off with your company details. When Maya makes a call, she introduces herself from {company.name}. When Layla writes LinkedIn posts, she uses your branding. Edit above to update across all agents instantly.</div>
       </div>
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ BRAND GUIDELINES & CONTENT STRATEGY Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ BRAND GUIDELINES & CONTENT STRATEGY ═══
   function BrandPage(){
     const editMode=brEditMode,setEditMode=setBrEditMode;
     //newTheme state lifted to parent
@@ -507,19 +570,19 @@ export default function App({onSignOut,userEmail}){
       {editMode?type==="textarea"
         ?<textarea style={{...ip,minHeight:60,resize:"vertical"}} defaultValue={brand[field]||""} data-brfield={field} key={field+(editMode?"e":"v")} />
         :<input style={ip} defaultValue={brand[field]||""} data-brfield={field} key={field+(editMode?"e":"v")} />
-      :<div style={{fontSize:12,color:T.tx,whiteSpace:"pre-wrap",lineHeight:1.6}}>{brand[field]||"Ã¢ÂÂ"}</div>}
+      :<div style={{fontSize:12,color:T.tx,whiteSpace:"pre-wrap",lineHeight:1.6}}>{brand[field]||"—"}</div>}
     </div>;
 
     return <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <h2 style={{fontSize:18,fontWeight:700}}>Ã°ÂÂÂ¨ Brand Guidelines</h2>
+        <h2 style={{fontSize:18,fontWeight:700}}>🎨 Brand Guidelines</h2>
         <button style={editMode?bt(T.em):btG(T.ts)} onClick={()=>{if(editMode){const u={};document.querySelectorAll("[data-brfield]").forEach(el=>{u[el.dataset.brfield]=el.value;});setBrand(p=>({...p,...u}));setEditMode(false);}else{setEditMode(true);}}}>{editMode?"Save":"Edit All"}</button>
       </div>
-      <div style={{fontSize:12,color:T.ts,marginBottom:14}}>These guidelines are injected into EVERY agent's AI prompt. When Layla writes an Instagram caption, Kai creates a Reel script, or the marketing team generates LinkedIn posts Ã¢ÂÂ they all follow these rules automatically.</div>
+      <div style={{fontSize:12,color:T.ts,marginBottom:14}}>These guidelines are injected into EVERY agent's AI prompt. When Layla writes an Instagram caption, Kai creates a Reel script, or the marketing team generates LinkedIn posts — they all follow these rules automatically.</div>
 
-      {/* Brand Identity Ã¢ÂÂ Logo + Colors */}
+      {/* Brand Identity — Logo + Colors */}
       <div style={{...cd,borderColor:`${T.br}30`}}>
-        <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ·Ã¯Â¸Â Brand Identity</div>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>🏷️ Brand Identity</div>
         <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:16,alignItems:"start"}}>
           <div style={{background:T.sa,borderRadius:9,padding:16,textAlign:"center",minWidth:140}}>
             <img src={LOGO} alt="Kapturise" style={{height:50,filter:"none",marginBottom:8}} />
@@ -549,14 +612,14 @@ export default function App({onSignOut,userEmail}){
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         {/* Tone */}
         <div style={cd}>
-          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ£Ã¯Â¸Â Brand Voice</div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>🗣️ Brand Voice</div>
           <BF label="Company Tone (for company pages, emails, proposals)" field="companyTone" type="textarea" />
           <BF label="Personal / Founder Tone (for personal LinkedIn, thought leadership)" field="personalTone" type="textarea" />
         </div>
 
         {/* Founder Profile */}
         <div style={{...cd,borderColor:`${T.am}30`}}>
-          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ¤ Founder Profile Ã¢ÂÂ {brand.founderName||"[Name]"}</div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>👤 Founder Profile — {brand.founderName||"[Name]"}</div>
           <div style={{fontSize:10.5,color:T.ts,marginBottom:8}}>This defines who the founder is so agents write personal posts correctly. Critical for LinkedIn and social media where the founder's voice is different from the company.</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
             <div><div style={{fontSize:10,color:T.td,marginBottom:3}}>Name</div>{editMode?<input style={ip} defaultValue={brand.founderName||""} data-brfield="founderName" key={"fn"+(editMode?"e":"v")} />:<div style={{fontSize:12.5,fontWeight:700}}>{brand.founderName}</div>}</div>
@@ -566,7 +629,7 @@ export default function App({onSignOut,userEmail}){
           <BF label="Areas of expertise (what topics can the founder speak on?)" field="founderExpertise" type="textarea" />
           <BF label="Posting style (how should the founder's posts sound?)" field="founderStyle" type="textarea" />
           <div style={{background:`${T.rs}10`,borderRadius:7,padding:10,marginTop:6}}>
-            <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:4}}>Ã°ÂÂÂ« Founder Do-Nots</div>
+            <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:4}}>🚫 Founder Do-Nots</div>
             {editMode?<textarea style={{...ip,minHeight:50,resize:"vertical"}} defaultValue={brand.founderDoNot||""} data-brfield="founderDoNot" key={"fdn"+(editMode?"e":"v")} />
               :<div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6}}>{brand.founderDoNot}</div>}
           </div>
@@ -574,12 +637,12 @@ export default function App({onSignOut,userEmail}){
 
         {/* Content Themes */}
         <div style={cd}>
-          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ Content Themes / Pillars</div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>📋 Content Themes / Pillars</div>
           <div style={{fontSize:10.5,color:T.td,marginBottom:6}}>Agents rotate through these themes when creating content calendars, posts, and campaigns.</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
             {brand.themes.map((t,i)=><div key={i} style={{background:`${T.vi}15`,border:`1px solid ${T.vi}30`,borderRadius:5,padding:"4px 8px",fontSize:11,color:T.vi,display:"flex",alignItems:"center",gap:4}}>
               {t}
-              {editMode&&<span style={{cursor:"pointer",color:T.rs}} onClick={()=>setBrand(b=>({...b,themes:b.themes.filter((_,j)=>j!==i)}))}>ÃÂ</span>}
+              {editMode&&<span style={{cursor:"pointer",color:T.rs}} onClick={()=>setBrand(b=>({...b,themes:b.themes.filter((_,j)=>j!==i)}))}>×</span>}
             </div>)}
           </div>
           {editMode&&<div style={{display:"flex",gap:6}}>
@@ -590,14 +653,14 @@ export default function App({onSignOut,userEmail}){
 
         {/* Post Structure */}
         <div style={cd}>
-          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ Post Structure</div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>📐 Post Structure</div>
           <BF label="Default post format (agents follow this for every post)" field="postStructure" type="textarea" />
           <BF label="Brand Colors & Design Direction" field="colors" type="textarea" />
         </div>
 
         {/* LinkedIn Strategy */}
         <div style={cd}>
-          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ¼ LinkedIn Strategy</div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>💼 LinkedIn Strategy</div>
           <BF label="Company Page Posts (how agents write for @Kapturise)" field="companyLI" type="textarea" />
           <BF label="Personal Profile Posts (how agents write for your personal brand)" field="personalLI" type="textarea" />
           <div style={{fontSize:10,color:T.td,marginTop:6}}>When an agent generates LinkedIn content, they check whether the task says "company" or "personal" and adjust voice, perspective, and content accordingly.</div>
@@ -605,7 +668,7 @@ export default function App({onSignOut,userEmail}){
 
         {/* Hashtags */}
         <div style={cd}>
-          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ·Ã¯Â¸Â Hashtag Sets by Platform</div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>🏷️ Hashtag Sets by Platform</div>
           <BF label="Instagram Hashtags" field="hashtagsIG" type="textarea" />
           <BF label="LinkedIn Hashtags" field="hashtagsLI" type="textarea" />
           <BF label="TikTok Hashtags" field="hashtagsTT" type="textarea" />
@@ -614,179 +677,179 @@ export default function App({onSignOut,userEmail}){
 
         {/* Don'ts */}
         <div style={{...cd,borderColor:`${T.rs}30`}}>
-          <div style={{fontSize:13,fontWeight:600,color:T.rs,marginBottom:10}}>Ã°ÂÂÂ« Never Do This</div>
+          <div style={{fontSize:13,fontWeight:600,color:T.rs,marginBottom:10}}>🚫 Never Do This</div>
           <BF label="Rules agents must NEVER break (injected as hard rules in every prompt)" field="doNot" type="textarea" />
         </div>
       </div>
 
       <div style={{...cd,borderColor:`${T.em}30`,marginTop:4}}>
-        <div style={{fontSize:12,fontWeight:600,color:T.em,marginBottom:6}}>Ã¢ÂÂ How this works</div>
+        <div style={{fontSize:12,fontWeight:600,color:T.em,marginBottom:6}}>✅ How this works</div>
         <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>
           All brand guidelines are injected into every agent's system prompt. When Layla generates a "2-Week Content Calendar", she follows your post structure, uses your hashtags, and respects your "never do" rules.
           When Kai writes LinkedIn posts, he checks if it's for the company page (third person, professional) or your personal profile (first person, witty, profound) and adjusts automatically.
-          Edit these guidelines anytime Ã¢ÂÂ changes take effect on the very next task any agent runs.
+          Edit these guidelines anytime — changes take effect on the very next task any agent runs.
         </div>
       </div>
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ API LIMITATIONS & AGENT SKILLS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ API LIMITATIONS & AGENT SKILLS ═══
   function SkillsPage(){
     return <div>
-      <h2 style={{fontSize:18,fontWeight:700,marginBottom:4}}>Ã°ÂÂ§Â  Agent Skills & API Limitations</h2>
+      <h2 style={{fontSize:18,fontWeight:700,marginBottom:4}}>🧠 Agent Skills & API Limitations</h2>
       <div style={{fontSize:12,color:T.ts,marginBottom:14}}>What agents CAN and CANNOT do on each platform. Understanding these limitations is critical for setting realistic expectations and building the right workflows.</div>
 
       {/* LinkedIn */}
       <div style={{...cd,borderColor:`${T.sk}30`}}>
-        <div style={{fontSize:14,fontWeight:700,color:T.sk,marginBottom:8}}>Ã°ÂÂÂ¼ LinkedIn Ã¢ÂÂ Limitations & Skills</div>
+        <div style={{fontSize:14,fontWeight:700,color:T.sk,marginBottom:8}}>💼 LinkedIn — Limitations & Skills</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:T.em,marginBottom:6}}>Ã¢ÂÂ What Agents CAN Do</div>
+            <div style={{fontSize:11,fontWeight:600,color:T.em,marginBottom:6}}>✅ What Agents CAN Do</div>
             <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>
-              Ã¢ÂÂ¢ Send connection requests with note (100/week, ~20/day)<br/>
-              Ã¢ÂÂ¢ Message 1st-degree connections (150/day)<br/>
-              Ã¢ÂÂ¢ Send InMails to non-connections (5-50/mo depending on plan)<br/>
-              Ã¢ÂÂ¢ Message group members without connecting<br/>
-              Ã¢ÂÂ¢ Message event attendees without connecting<br/>
-              Ã¢ÂÂ¢ View profiles (~100/day)<br/>
-              Ã¢ÂÂ¢ Post content to company page (via Marketing API)<br/>
-              Ã¢ÂÂ¢ Post as personal profile (via 3rd party tools)<br/>
-              Ã¢ÂÂ¢ Comment on posts, react, share<br/>
-              Ã¢ÂÂ¢ Track who viewed your profile
+              • Send connection requests with note (100/week, ~20/day)<br/>
+              • Message 1st-degree connections (150/day)<br/>
+              • Send InMails to non-connections (5-50/mo depending on plan)<br/>
+              • Message group members without connecting<br/>
+              • Message event attendees without connecting<br/>
+              • View profiles (~100/day)<br/>
+              • Post content to company page (via Marketing API)<br/>
+              • Post as personal profile (via 3rd party tools)<br/>
+              • Comment on posts, react, share<br/>
+              • Track who viewed your profile
             </div>
           </div>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:6}}>Ã¢ÂÂ What Agents CANNOT Do</div>
+            <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:6}}>❌ What Agents CANNOT Do</div>
             <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>
-              Ã¢ÂÂ¢ Message non-connections directly (need InMail or connect first)<br/>
-              Ã¢ÂÂ¢ Send unlimited connection requests (100/week cap)<br/>
-              Ã¢ÂÂ¢ Scrape profile data (violates ToS Ã¢ÂÂ use Sales Navigator)<br/>
-              Ã¢ÂÂ¢ Bypass connection limits with automation<br/>
-              Ã¢ÂÂ¢ Access full messaging API without enterprise approval<br/>
-              Ã¢ÂÂ¢ Auto-accept incoming connections<br/>
-              Ã¢ÂÂ¢ Send more than 300 chars in connection note
+              • Message non-connections directly (need InMail or connect first)<br/>
+              • Send unlimited connection requests (100/week cap)<br/>
+              • Scrape profile data (violates ToS — use Sales Navigator)<br/>
+              • Bypass connection limits with automation<br/>
+              • Access full messaging API without enterprise approval<br/>
+              • Auto-accept incoming connections<br/>
+              • Send more than 300 chars in connection note
             </div>
           </div>
         </div>
         <div style={{background:`${T.sk}10`,borderRadius:6,padding:10,marginTop:8}}>
-          <div style={{fontSize:11,fontWeight:600,color:T.sk,marginBottom:4}}>Ã°ÂÂÂ§ Agent Skill: LinkedIn Outreach Workflow</div>
-          <div style={{fontSize:11,color:T.ts,lineHeight:1.7}}>1. <strong>Not connected?</strong> Ã¢ÂÂ Agent sends connection request WITH personalized note (under 300 chars)<br/>
-          2. <strong>Connection accepted?</strong> Ã¢ÂÂ Agent sends follow-up message (full length)<br/>
-          3. <strong>No response?</strong> Ã¢ÂÂ Agent comments on their recent post (genuine, not salesy)<br/>
-          4. <strong>Still no response?</strong> Ã¢ÂÂ Agent sends InMail (if Sales Navigator plan)<br/>
-          5. <strong>Group member?</strong> Ã¢ÂÂ Agent messages directly via shared group (lands in Message Requests)<br/>
-          6. <strong>Event attendee?</strong> Ã¢ÂÂ Agent messages directly (reference the event as icebreaker)<br/>
-          <br/>Ã¢ÂÂ Ã¯Â¸Â <strong>Safe limits:</strong> 20 connections/day, 50 messages/day, 10 comments/day. Agent auto-pauses when approaching limits.</div>
+          <div style={{fontSize:11,fontWeight:600,color:T.sk,marginBottom:4}}>🔧 Agent Skill: LinkedIn Outreach Workflow</div>
+          <div style={{fontSize:11,color:T.ts,lineHeight:1.7}}>1. <strong>Not connected?</strong> → Agent sends connection request WITH personalized note (under 300 chars)<br/>
+          2. <strong>Connection accepted?</strong> → Agent sends follow-up message (full length)<br/>
+          3. <strong>No response?</strong> → Agent comments on their recent post (genuine, not salesy)<br/>
+          4. <strong>Still no response?</strong> → Agent sends InMail (if Sales Navigator plan)<br/>
+          5. <strong>Group member?</strong> → Agent messages directly via shared group (lands in Message Requests)<br/>
+          6. <strong>Event attendee?</strong> → Agent messages directly (reference the event as icebreaker)<br/>
+          <br/>⚠️ <strong>Safe limits:</strong> 20 connections/day, 50 messages/day, 10 comments/day. Agent auto-pauses when approaching limits.</div>
         </div>
         <div style={{fontSize:10.5,color:T.td,marginTop:6}}>Recommended tools: Dripify ($59/mo) or PhantomBuster ($56/mo) for automation. Sales Navigator ($80/mo) for InMails + advanced search. Or use Unipile/ConnectSafely API ($39/mo) for direct API access.</div>
       </div>
 
       {/* Instagram */}
       <div style={{...cd,borderColor:`${T.pk}30`}}>
-        <div style={{fontSize:14,fontWeight:700,color:T.pk,marginBottom:8}}>Ã°ÂÂÂ¸ Instagram Ã¢ÂÂ Limitations & Skills</div>
+        <div style={{fontSize:14,fontWeight:700,color:T.pk,marginBottom:8}}>📸 Instagram — Limitations & Skills</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:T.em,marginBottom:6}}>Ã¢ÂÂ What Agents CAN Do</div>
+            <div style={{fontSize:11,fontWeight:600,color:T.em,marginBottom:6}}>✅ What Agents CAN Do</div>
             <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>
-              Ã¢ÂÂ¢ Post photos/videos/carousels (via Graph API)<br/>
-              Ã¢ÂÂ¢ Read comments, insights, follower data<br/>
-              Ã¢ÂÂ¢ Reply to comments on your posts<br/>
-              Ã¢ÂÂ¢ Send DMs to people who messaged you first<br/>
-              Ã¢ÂÂ¢ Like posts (with caution Ã¢ÂÂ rate limited)<br/>
-              Ã¢ÂÂ¢ Follow accounts (with caution)<br/>
-              Ã¢ÂÂ¢ View stories (via 3rd party)<br/>
-              Ã¢ÂÂ¢ Schedule posts (via Buffer/Later)
+              • Post photos/videos/carousels (via Graph API)<br/>
+              • Read comments, insights, follower data<br/>
+              • Reply to comments on your posts<br/>
+              • Send DMs to people who messaged you first<br/>
+              • Like posts (with caution — rate limited)<br/>
+              • Follow accounts (with caution)<br/>
+              • View stories (via 3rd party)<br/>
+              • Schedule posts (via Buffer/Later)
             </div>
           </div>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:6}}>Ã¢ÂÂ What Agents CANNOT Do</div>
+            <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:6}}>❌ What Agents CANNOT Do</div>
             <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>
-              Ã¢ÂÂ¢ Send cold DMs via official API (Graph API doesn't support outbound DMs to non-followers)<br/>
-              Ã¢ÂÂ¢ Mass follow/unfollow (gets account banned)<br/>
-              Ã¢ÂÂ¢ Auto-like at scale (rate limited, ~60/hour)<br/>
-              Ã¢ÂÂ¢ Comment via API (Graph API is limited)<br/>
-              Ã¢ÂÂ¢ Access private accounts<br/>
-              Ã¢ÂÂ¢ Send voice notes via API<br/>
-              Ã¢ÂÂ¢ View who viewed your profile
+              • Send cold DMs via official API (Graph API doesn't support outbound DMs to non-followers)<br/>
+              • Mass follow/unfollow (gets account banned)<br/>
+              • Auto-like at scale (rate limited, ~60/hour)<br/>
+              • Comment via API (Graph API is limited)<br/>
+              • Access private accounts<br/>
+              • Send voice notes via API<br/>
+              • View who viewed your profile
             </div>
           </div>
         </div>
         <div style={{background:`${T.pk}10`,borderRadius:6,padding:10,marginTop:8}}>
-          <div style={{fontSize:11,fontWeight:600,color:T.pk,marginBottom:4}}>Ã°ÂÂÂ§ Agent Skill: Instagram Outreach Workflow</div>
-          <div style={{fontSize:11,color:T.ts,lineHeight:1.7}}>1. <strong>Follow target account</strong> Ã¢ÂÂ manual or via ManyChat<br/>
-          2. <strong>Like 3-5 recent posts</strong> Ã¢ÂÂ spread over 2 days (not all at once)<br/>
-          3. <strong>Leave genuine comment</strong> Ã¢ÂÂ must be relevant and human-sounding<br/>
-          4. <strong>Reply to their Story</strong> Ã¢ÂÂ if they post one (highest response rate)<br/>
-          5. <strong>Send opening DM</strong> Ã¢ÂÂ via ManyChat automation or manual<br/>
-          6. <strong>If they reply</strong> Ã¢ÂÂ conversation continues in DMs, log to CRM<br/>
-          7. <strong>If no reply</strong> Ã¢ÂÂ send voice note (manual) or new angle DM after 5 days<br/>
-          <br/>Ã¢ÂÂ Ã¯Â¸Â <strong>Safe limits:</strong> 30 follows/day, 60 likes/hour, 10 DMs/hour. New accounts need warm-up (start with 5/day, increase weekly).</div>
+          <div style={{fontSize:11,fontWeight:600,color:T.pk,marginBottom:4}}>🔧 Agent Skill: Instagram Outreach Workflow</div>
+          <div style={{fontSize:11,color:T.ts,lineHeight:1.7}}>1. <strong>Follow target account</strong> → manual or via ManyChat<br/>
+          2. <strong>Like 3-5 recent posts</strong> → spread over 2 days (not all at once)<br/>
+          3. <strong>Leave genuine comment</strong> → must be relevant and human-sounding<br/>
+          4. <strong>Reply to their Story</strong> → if they post one (highest response rate)<br/>
+          5. <strong>Send opening DM</strong> → via ManyChat automation or manual<br/>
+          6. <strong>If they reply</strong> → conversation continues in DMs, log to CRM<br/>
+          7. <strong>If no reply</strong> → send voice note (manual) or new angle DM after 5 days<br/>
+          <br/>⚠️ <strong>Safe limits:</strong> 30 follows/day, 60 likes/hour, 10 DMs/hour. New accounts need warm-up (start with 5/day, increase weekly).</div>
         </div>
         <div style={{fontSize:10.5,color:T.td,marginTop:6}}>Recommended: ManyChat ($15/mo) for DM automation. Meta Business Suite (free) for posting. PhantomBuster for data extraction.</div>
       </div>
 
       {/* WhatsApp */}
       <div style={{...cd,borderColor:`${T.em}30`}}>
-        <div style={{fontSize:14,fontWeight:700,color:T.em,marginBottom:8}}>Ã°ÂÂÂ¬ WhatsApp Business Ã¢ÂÂ Limitations & Skills</div>
+        <div style={{fontSize:14,fontWeight:700,color:T.em,marginBottom:8}}>💬 WhatsApp Business — Limitations & Skills</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:T.em,marginBottom:6}}>Ã¢ÂÂ What Agents CAN Do</div>
+            <div style={{fontSize:11,fontWeight:600,color:T.em,marginBottom:6}}>✅ What Agents CAN Do</div>
             <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>
-              Ã¢ÂÂ¢ Send template messages to opted-in contacts<br/>
-              Ã¢ÂÂ¢ Reply to incoming messages within 24hr window<br/>
-              Ã¢ÂÂ¢ Send media (photos, videos, docs)<br/>
-              Ã¢ÂÂ¢ Create automated flows with buttons<br/>
-              Ã¢ÂÂ¢ Send catalogs and product messages<br/>
-              Ã¢ÂÂ¢ Use quick replies and list messages
+              • Send template messages to opted-in contacts<br/>
+              • Reply to incoming messages within 24hr window<br/>
+              • Send media (photos, videos, docs)<br/>
+              • Create automated flows with buttons<br/>
+              • Send catalogs and product messages<br/>
+              • Use quick replies and list messages
             </div>
           </div>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:6}}>Ã¢ÂÂ What Agents CANNOT Do</div>
+            <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:6}}>❌ What Agents CANNOT Do</div>
             <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>
-              Ã¢ÂÂ¢ Cold message people who haven't opted in<br/>
-              Ã¢ÂÂ¢ Send marketing messages after 24hr window closes<br/>
-              Ã¢ÂÂ¢ Use personal WhatsApp (must be Business API)<br/>
-              Ã¢ÂÂ¢ Send unlimited messages (rate limited by Meta)<br/>
-              Ã¢ÂÂ¢ Avoid template approval for first messages
+              • Cold message people who haven't opted in<br/>
+              • Send marketing messages after 24hr window closes<br/>
+              • Use personal WhatsApp (must be Business API)<br/>
+              • Send unlimited messages (rate limited by Meta)<br/>
+              • Avoid template approval for first messages
             </div>
           </div>
         </div>
         <div style={{background:`${T.em}10`,borderRadius:6,padding:10,marginTop:8}}>
-          <div style={{fontSize:11,fontWeight:600,color:T.em,marginBottom:4}}>Ã°ÂÂÂ§ Agent Skill: WhatsApp Sales Workflow</div>
-          <div style={{fontSize:11,color:T.ts,lineHeight:1.7}}>1. <strong>Prospect says "WhatsApp me"</strong> Ã¢ÂÂ agent detects intent + phone number<br/>
-          2. <strong>If WhatsApp API connected</strong> Ã¢ÂÂ agent sends approved template message automatically<br/>
-          3. <strong>If no API</strong> Ã¢ÂÂ flags for human, opens wa.me link<br/>
-          4. <strong>Customer replies within 24hrs</strong> Ã¢ÂÂ agent can send free-form messages<br/>
-          5. <strong>24hr window closes</strong> Ã¢ÂÂ agent must use template message again<br/>
-          6. <strong>All conversations</strong> Ã¢ÂÂ auto-logged to CRM with full transcript</div>
+          <div style={{fontSize:11,fontWeight:600,color:T.em,marginBottom:4}}>🔧 Agent Skill: WhatsApp Sales Workflow</div>
+          <div style={{fontSize:11,color:T.ts,lineHeight:1.7}}>1. <strong>Prospect says "WhatsApp me"</strong> → agent detects intent + phone number<br/>
+          2. <strong>If WhatsApp API connected</strong> → agent sends approved template message automatically<br/>
+          3. <strong>If no API</strong> → flags for human, opens wa.me link<br/>
+          4. <strong>Customer replies within 24hrs</strong> → agent can send free-form messages<br/>
+          5. <strong>24hr window closes</strong> → agent must use template message again<br/>
+          6. <strong>All conversations</strong> → auto-logged to CRM with full transcript</div>
         </div>
       </div>
 
       {/* Phone */}
       <div style={{...cd,borderColor:`${T.am}30`}}>
-        <div style={{fontSize:14,fontWeight:700,color:T.am,marginBottom:8}}>Ã°ÂÂÂ Phone Calls Ã¢ÂÂ Limitations & Skills</div>
+        <div style={{fontSize:14,fontWeight:700,color:T.am,marginBottom:8}}>📞 Phone Calls — Limitations & Skills</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:T.em,marginBottom:6}}>Ã¢ÂÂ What Agents CAN Do</div>
+            <div style={{fontSize:11,fontWeight:600,color:T.em,marginBottom:6}}>✅ What Agents CAN Do</div>
             <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>
-              Ã¢ÂÂ¢ Make outbound AI calls (Bland.ai/Vapi)<br/>
-              Ã¢ÂÂ¢ Follow call scripts dynamically<br/>
-              Ã¢ÂÂ¢ Detect caller intent in real-time<br/>
-              Ã¢ÂÂ¢ Record and transcribe calls<br/>
-              Ã¢ÂÂ¢ Transfer to human if needed<br/>
-              Ã¢ÂÂ¢ Leave voicemails<br/>
-              Ã¢ÂÂ¢ Handle objections with trained responses
+              • Make outbound AI calls (Bland.ai/Vapi)<br/>
+              • Follow call scripts dynamically<br/>
+              • Detect caller intent in real-time<br/>
+              • Record and transcribe calls<br/>
+              • Transfer to human if needed<br/>
+              • Leave voicemails<br/>
+              • Handle objections with trained responses
             </div>
           </div>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:6}}>Ã¢ÂÂ Limitations</div>
+            <div style={{fontSize:11,fontWeight:600,color:T.rs,marginBottom:6}}>❌ Limitations</div>
             <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>
-              Ã¢ÂÂ¢ Must respect business hours per region<br/>
-              Ã¢ÂÂ¢ AI voice may be detected by some prospects<br/>
-              Ã¢ÂÂ¢ Cannot handle complex negotiations<br/>
-              Ã¢ÂÂ¢ Costs per minute ($0.05-0.10/min)<br/>
-              Ã¢ÂÂ¢ Some countries restrict AI calls<br/>
-              Ã¢ÂÂ¢ Caller ID must be a real number
+              • Must respect business hours per region<br/>
+              • AI voice may be detected by some prospects<br/>
+              • Cannot handle complex negotiations<br/>
+              • Costs per minute ($0.05-0.10/min)<br/>
+              • Some countries restrict AI calls<br/>
+              • Caller ID must be a real number
             </div>
           </div>
         </div>
@@ -794,9 +857,9 @@ export default function App({onSignOut,userEmail}){
 
       {/* Email */}
       <div style={{...cd,borderColor:`${T.br}30`}}>
-        <div style={{fontSize:14,fontWeight:700,color:T.br,marginBottom:8}}>Ã¢ÂÂÃ¯Â¸Â Email Ã¢ÂÂ Limitations & Skills</div>
+        <div style={{fontSize:14,fontWeight:700,color:T.br,marginBottom:8}}>✉️ Email — Limitations & Skills</div>
         <div style={{fontSize:11.5,color:T.ts,lineHeight:1.7}}>
-          <strong style={{color:T.em}}>Ã¢ÂÂ Fully automated.</strong> Email is the most automatable channel. Agents can send cold emails, follow-ups, proposals, and newsletters at scale with proper warm-up.<br/><br/>
+          <strong style={{color:T.em}}>✅ Fully automated.</strong> Email is the most automatable channel. Agents can send cold emails, follow-ups, proposals, and newsletters at scale with proper warm-up.<br/><br/>
           <strong>Key limits:</strong> Gmail: 500/day (free), 2000/day (Workspace). Instantly.ai handles warm-up and rotation across multiple inboxes. SendGrid: 100/day free, unlimited on paid.<br/><br/>
           <strong>Best practice:</strong> Warm up new email addresses for 2-3 weeks before cold outreach. Start with 10/day, increase by 5 every 3 days. Use SPF/DKIM/DMARC for deliverability.
         </div>
@@ -804,17 +867,17 @@ export default function App({onSignOut,userEmail}){
 
       {/* Summary */}
       <div style={{...cd,borderColor:`${T.vi}30`}}>
-        <div style={{fontSize:14,fontWeight:700,color:T.vi,marginBottom:8}}>Ã°ÂÂÂ Channel Automation Summary</div>
+        <div style={{fontSize:14,fontWeight:700,color:T.vi,marginBottom:8}}>📊 Channel Automation Summary</div>
         <div style={{overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
           <thead><tr style={{borderBottom:`1px solid ${T.bd}`}}>
             {["Channel","Cold Outreach","Messaging","Posting","Automation Level","Best Tool"].map(h=><th key={h} style={{textAlign:"left",padding:"6px",fontWeight:600,color:T.td,fontSize:9}}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {[{ch:"LinkedIn",co:"Connection req + note",msg:"1st degree only",post:"Ã¢ÂÂ Full",auto:"Ã¢ÂÂ Ã¯Â¸Â Medium",tool:"Dripify / Sales Nav"},
-              {ch:"Instagram",co:"Follow Ã¢ÂÂ Like Ã¢ÂÂ Comment Ã¢ÂÂ DM",msg:"DM (limited API)",post:"Ã¢ÂÂ Full",auto:"Ã¢ÂÂ Ã¯Â¸Â Medium",tool:"ManyChat"},
-              {ch:"WhatsApp",co:"Template msgs only",msg:"24hr window",post:"N/A",auto:"Ã¢ÂÂ Ã¯Â¸Â Template-based",tool:"Twilio / WABA"},
-              {ch:"Email",co:"Ã¢ÂÂ Unlimited (with warm-up)",msg:"Ã¢ÂÂ Unlimited",post:"N/A",auto:"Ã¢ÂÂ Full",tool:"Instantly.ai"},
-              {ch:"Phone",co:"Ã¢ÂÂ AI calls",msg:"N/A",post:"N/A",auto:"Ã¢ÂÂ Full (business hrs)",tool:"Bland.ai / Vapi"},
+            {[{ch:"LinkedIn",co:"Connection req + note",msg:"1st degree only",post:"✅ Full",auto:"⚠️ Medium",tool:"Dripify / Sales Nav"},
+              {ch:"Instagram",co:"Follow → Like → Comment → DM",msg:"DM (limited API)",post:"✅ Full",auto:"⚠️ Medium",tool:"ManyChat"},
+              {ch:"WhatsApp",co:"Template msgs only",msg:"24hr window",post:"N/A",auto:"⚠️ Template-based",tool:"Twilio / WABA"},
+              {ch:"Email",co:"✅ Unlimited (with warm-up)",msg:"✅ Unlimited",post:"N/A",auto:"✅ Full",tool:"Instantly.ai"},
+              {ch:"Phone",co:"✅ AI calls",msg:"N/A",post:"N/A",auto:"✅ Full (business hrs)",tool:"Bland.ai / Vapi"},
             ].map(r=><tr key={r.ch} style={{borderBottom:`1px solid ${T.bd}`}}>
               <td style={{padding:"6px",fontWeight:600}}>{r.ch}</td>
               <td style={{padding:"6px"}}>{r.co}</td>
@@ -827,17 +890,17 @@ export default function App({onSignOut,userEmail}){
         </table></div>
       </div>
 
-      {/* Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ CHROME SKILLS Ã¢ÂÂ Claude in Chrome browser automation Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
+      {/* ═══ CHROME SKILLS — Claude in Chrome browser automation ═══ */}
       <div style={{...cd,borderColor:`${T.br}40`,background:`${T.br}05`}}>
-        <div style={{fontSize:16,fontWeight:700,color:T.br,marginBottom:4}}>Ã°ÂÂÂ Chrome Skills Ã¢ÂÂ Browser-Based Automation</div>
-        <div style={{fontSize:12,color:T.ts,marginBottom:10}}>Claude in Chrome controls your real browser Ã¢ÂÂ no API limits, no third-party tools. The agent acts as YOU on LinkedIn, Instagram, etc. at human-like speed. Create skills below that tell Claude exactly what to do.</div>
+        <div style={{fontSize:16,fontWeight:700,color:T.br,marginBottom:4}}>🌐 Chrome Skills — Browser-Based Automation</div>
+        <div style={{fontSize:12,color:T.ts,marginBottom:10}}>Claude in Chrome controls your real browser — no API limits, no third-party tools. The agent acts as YOU on LinkedIn, Instagram, etc. at human-like speed. Create skills below that tell Claude exactly what to do.</div>
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           {/* LinkedIn Chrome Skill */}
           <div style={{background:T.cd,borderRadius:9,padding:12,border:`1px solid ${T.sk}30`}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.sk,marginBottom:8}}>Ã°ÂÂÂ¼ LinkedIn Prospecting Skill</div>
+            <div style={{fontSize:13,fontWeight:700,color:T.sk,marginBottom:8}}>💼 LinkedIn Prospecting Skill</div>
             <div style={{fontSize:10,color:T.td,marginBottom:6}}>Copy this skill prompt into Claude in Chrome or Cowork. It tells Claude exactly how to prospect on LinkedIn using your browser.</div>
-            <div style={{background:T.bg,borderRadius:7,padding:10,fontSize:11,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:300,overflow:"auto",border:`1px solid ${T.bd}`,marginBottom:8}}>{`LINKEDIN PROSPECTING SKILL Ã¢ÂÂ Kapturise
+            <div style={{background:T.bg,borderRadius:7,padding:10,fontSize:11,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:300,overflow:"auto",border:`1px solid ${T.bd}`,marginBottom:8}}>{`LINKEDIN PROSPECTING SKILL — Kapturise
 
 You are an AI sales agent for Kapturise, a Dubai creative production agency. You are controlling my LinkedIn browser session.
 
@@ -848,13 +911,13 @@ TARGET CRITERIA:
 - Signals: Recently posted, new role, hiring, expanding
 
 WORKFLOW:
-1. SEARCH: Go to LinkedIn Search Ã¢ÂÂ People Ã¢ÂÂ Filter by industry, location, title
+1. SEARCH: Go to LinkedIn Search → People → Filter by industry, location, title
 2. EVALUATE: For each prospect, check their profile:
    - Do they work at a company that needs photography/videography?
    - Have they posted recently? (active accounts respond better)
    - Are we already connected? Check "Connect" vs "Message" button
 3. IF NOT CONNECTED:
-   - Click "Connect" Ã¢ÂÂ "Add a note"
+   - Click "Connect" → "Add a note"
    - Write a personalized note (under 300 chars):
      "Hi [Name], I run creative partnerships at Kapturise. Noticed [Company] is [specific observation from their profile/posts]. We help [industry] brands in Dubai with photography, video, and content. Would love to connect."
    - Click "Send"
@@ -876,29 +939,29 @@ LIMITS PER SESSION:
 - Stop if LinkedIn shows any warning
 
 CONNECTION NOTE TEMPLATES:
-Template 1 (Real Estate): "Hi [Name], I lead creative partnerships at Kapturise. Saw [Company]'s new development Ã¢ÂÂ we specialize in property photography, drone coverage, and virtual tours for Dubai developers. Let's connect!"
+Template 1 (Real Estate): "Hi [Name], I lead creative partnerships at Kapturise. Saw [Company]'s new development — we specialize in property photography, drone coverage, and virtual tours for Dubai developers. Let's connect!"
 Template 2 (F&B): "Hi [Name], your brand looks amazing! Kapturise helps F&B businesses in Dubai with food photography and content that drives Talabat/IG engagement. Happy to share our F&B portfolio."
 Template 3 (Events): "Hi [Name], noticed [Company] has events coming up. We provide full event coverage (photo + video + same-night highlights) across Dubai. Would love to connect!"
-Template 4 (Corporate): "Hi [Name], Kapturise helps companies like [Company] with professional content Ã¢ÂÂ headshots, office photography, corporate videos. We're trusted by [similar companies]. Let's connect!"
+Template 4 (Corporate): "Hi [Name], Kapturise helps companies like [Company] with professional content — headshots, office photography, corporate videos. We're trusted by [similar companies]. Let's connect!"
 
 FOLLOW-UP SEQUENCE (after connection accepted):
-Day 0: Connection accepted Ã¢ÂÂ Send thank you + portfolio link
-Day 3: If no reply Ã¢ÂÂ Comment on their latest post
+Day 0: Connection accepted → Send thank you + portfolio link
+Day 3: If no reply → Comment on their latest post
 Day 5: Send follow-up message with specific case study
-Day 7: If interested Ã¢ÂÂ Propose a 15-min call
-Day 14: If no reply Ã¢ÂÂ Final message with special offer
+Day 7: If interested → Propose a 15-min call
+Day 14: If no reply → Final message with special offer
 
-COMPANY INFO: ${company.name} Ã¢ÂÂ ${company.tagline}
+COMPANY INFO: ${company.name} — ${company.tagline}
 Website: ${company.website} | IG: ${company.instagram}
 ${brand.companyTone}`}</div>
-            <button style={bt(T.sk)} onClick={()=>{navigator.clipboard?.writeText(document.querySelector('[data-li-skill]')?.textContent||"");alert("Copied LinkedIn skill to clipboard!");}}>Ã°ÂÂÂ Copy Skill</button>
+            <button style={bt(T.sk)} onClick={()=>{navigator.clipboard?.writeText(document.querySelector('[data-li-skill]')?.textContent||"");alert("Copied LinkedIn skill to clipboard!");}}>📋 Copy Skill</button>
           </div>
 
           {/* Instagram Chrome Skill */}
           <div style={{background:T.cd,borderRadius:9,padding:12,border:`1px solid ${T.pk}30`}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.pk,marginBottom:8}}>Ã°ÂÂÂ¸ Instagram Outreach Skill</div>
+            <div style={{fontSize:13,fontWeight:700,color:T.pk,marginBottom:8}}>📸 Instagram Outreach Skill</div>
             <div style={{fontSize:10,color:T.td,marginBottom:6}}>For Claude in Chrome to automate Instagram warm-up and DM outreach on instagram.com.</div>
-            <div style={{background:T.bg,borderRadius:7,padding:10,fontSize:11,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:300,overflow:"auto",border:`1px solid ${T.bd}`,marginBottom:8}}>{`INSTAGRAM OUTREACH SKILL Ã¢ÂÂ Kapturise
+            <div style={{background:T.bg,borderRadius:7,padding:10,fontSize:11,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:300,overflow:"auto",border:`1px solid ${T.bd}`,marginBottom:8}}>{`INSTAGRAM OUTREACH SKILL — Kapturise
 
 You are controlling my Instagram browser session (instagram.com) for sales outreach.
 
@@ -910,15 +973,15 @@ TARGET ACCOUNTS:
 - Search via hashtags: #dubairestaurant #dubairealestate #dubaievents #dubailife
 
 WARM-UP SEQUENCE (do this BEFORE sending any DM):
-Day 1: Find target Ã¢ÂÂ Follow account Ã¢ÂÂ Like 3 recent posts
-Day 2: Like 2 more posts Ã¢ÂÂ Leave genuine comment on latest post
+Day 1: Find target → Follow account → Like 3 recent posts
+Day 2: Like 2 more posts → Leave genuine comment on latest post
 Day 3: Reply to their Story (if they post one)
 Day 4: NOW send opening DM
 
 DM TEMPLATES:
-F&B: "Hey [Name]! Ã°ÂÂÂ Your menu looks incredible. We specialize in food photography for Dubai restaurants Ã¢ÂÂ we help brands look amazing on Talabat and IG. Mind if I send over some of our work?"
+F&B: "Hey [Name]! 👋 Your menu looks incredible. We specialize in food photography for Dubai restaurants — we help brands look amazing on Talabat and IG. Mind if I send over some of our work?"
 Real Estate: "Hi! Love the properties [Company] is showcasing. We do professional property photography, drone shots, and virtual tours for Dubai developers. Happy to share our real estate portfolio!"
-Events: "Hi [Name]! Noticed [event/activity]. We provide full event coverage Ã¢ÂÂ photo + video + same-night highlight reels. Interested in seeing our event portfolio?"
+Events: "Hi [Name]! Noticed [event/activity]. We provide full event coverage — photo + video + same-night highlight reels. Interested in seeing our event portfolio?"
 
 RULES:
 - NEVER send DMs to accounts you haven't engaged with first
@@ -926,29 +989,29 @@ RULES:
 - Maximum 30 follows per day
 - Maximum 60 likes per hour
 - Wait 30-60 seconds between actions
-- If account is private Ã¢ÂÂ follow and wait for acceptance before engaging
+- If account is private → follow and wait for acceptance before engaging
 - STOP immediately if Instagram shows any restriction warning
 
 DETECT INDUSTRY:
 Before DM-ing, determine the business type from their bio and posts:
-- Mentions food/restaurant/cafe/menu Ã¢ÂÂ F&B
-- Mentions property/villa/apartment/developer Ã¢ÂÂ Real Estate
-- Mentions event/wedding/conference/gala Ã¢ÂÂ Events
-- Mentions shop/store/collection/fashion Ã¢ÂÂ Ecommerce
+- Mentions food/restaurant/cafe/menu → F&B
+- Mentions property/villa/apartment/developer → Real Estate
+- Mentions event/wedding/conference/gala → Events
+- Mentions shop/store/collection/fashion → Ecommerce
 - Use this to select the right DM template
 
 LOG TO CRM:
 After each interaction, record:
 - @handle, Business Name, Industry, Action (follow/like/comment/DM), Response
-- If they reply with interest Ã¢ÂÂ flag as WARM lead
-- If they share a phone number Ã¢ÂÂ flag for CALL follow-up
-- If they say "not interested" Ã¢ÂÂ mark as COLD, stop outreach`}</div>
-            <button style={bt(T.pk)} onClick={()=>navigator.clipboard?.writeText("Instagram skill copied!")}>Ã°ÂÂÂ Copy Skill</button>
+- If they reply with interest → flag as WARM lead
+- If they share a phone number → flag for CALL follow-up
+- If they say "not interested" → mark as COLD, stop outreach`}</div>
+            <button style={bt(T.pk)} onClick={()=>navigator.clipboard?.writeText("Instagram skill copied!")}>📋 Copy Skill</button>
           </div>
 
           {/* General Setup Guide */}
           <div style={{background:T.cd,borderRadius:9,padding:12,border:`1px solid ${T.em}30`,gridColumn:"span 2"}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.em,marginBottom:8}}>Ã°ÂÂÂ Setup Guide Ã¢ÂÂ How to Use Chrome Skills</div>
+            <div style={{fontSize:13,fontWeight:700,color:T.em,marginBottom:8}}>📖 Setup Guide — How to Use Chrome Skills</div>
             <div style={{fontSize:11.5,color:T.ts,lineHeight:1.8}}>
               <strong>Option 1: Claude in Chrome (browser agent)</strong><br/>
               1. Enable "Claude in Chrome" in your Claude Desktop settings (Connectors section)<br/>
@@ -969,28 +1032,28 @@ After each interaction, record:
               3. Claude will guide you step-by-step on what to do (you execute manually)<br/>
               <br/>
               <strong>Requirements:</strong><br/>
-              Ã¢ÂÂ¢ Claude Pro or Max subscription ($20-200/mo)<br/>
-              Ã¢ÂÂ¢ Claude Desktop app with Chrome connector enabled<br/>
-              Ã¢ÂÂ¢ Be logged into LinkedIn/Instagram in Chrome<br/>
-              Ã¢ÂÂ¢ macOS (Windows support coming)
+              • Claude Pro or Max subscription ($20-200/mo)<br/>
+              • Claude Desktop app with Chrome connector enabled<br/>
+              • Be logged into LinkedIn/Instagram in Chrome<br/>
+              • macOS (Windows support coming)
             </div>
           </div>
 
           {/* Multi-Platform Skill */}
           <div style={{background:T.cd,borderRadius:9,padding:12,border:`1px solid ${T.vi}30`,gridColumn:"span 2"}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.vi,marginBottom:8}}>Ã°ÂÂÂ Multi-Channel Outreach Skill</div>
+            <div style={{fontSize:13,fontWeight:700,color:T.vi,marginBottom:8}}>🔄 Multi-Channel Outreach Skill</div>
             <div style={{fontSize:10.5,color:T.ts,marginBottom:6}}>This skill tells Claude to coordinate outreach across LinkedIn + Instagram + Email for the same prospect. Paste into Cowork for a daily automated workflow.</div>
-            <div style={{background:T.bg,borderRadius:7,padding:10,fontSize:11,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:200,overflow:"auto",border:`1px solid ${T.bd}`,marginBottom:8}}>{`DAILY MULTI-CHANNEL OUTREACH Ã¢ÂÂ Kapturise
+            <div style={{background:T.bg,borderRadius:7,padding:10,fontSize:11,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:200,overflow:"auto",border:`1px solid ${T.bd}`,marginBottom:8}}>{`DAILY MULTI-CHANNEL OUTREACH — Kapturise
 
 Morning Routine (10am-12pm Dubai time):
-1. Open LinkedIn Ã¢ÂÂ Run LinkedIn Prospecting Skill (20 connections, 10 comments)
-2. Open Instagram Ã¢ÂÂ Run Instagram Outreach Skill (15 DMs after warm-up)
-3. Open Gmail Ã¢ÂÂ Send 20 cold emails from today's prospect list
+1. Open LinkedIn → Run LinkedIn Prospecting Skill (20 connections, 10 comments)
+2. Open Instagram → Run Instagram Outreach Skill (15 DMs after warm-up)
+3. Open Gmail → Send 20 cold emails from today's prospect list
 
 Afternoon (2pm-4pm):
-4. Check LinkedIn for new connection acceptances Ã¢ÂÂ Send follow-up messages
-5. Check Instagram DMs for replies Ã¢ÂÂ Respond and log to CRM
-6. Check email replies Ã¢ÂÂ Categorize: interested / not interested / needs follow-up
+4. Check LinkedIn for new connection acceptances → Send follow-up messages
+5. Check Instagram DMs for replies → Respond and log to CRM
+6. Check email replies → Categorize: interested / not interested / needs follow-up
 
 End of Day (5pm):
 7. Create follow-ups in CRM for tomorrow
@@ -1005,8 +1068,8 @@ DAILY TARGETS:
 - 10 follow-up messages (across channels)
 - 5 genuine comments on prospect content
 
-If a prospect replies on any channel, continue the conversation there. If they give a phone number Ã¢ÂÂ schedule a call. If they ask for pricing Ã¢ÂÂ generate a proposal.`}</div>
-            <button style={bt(T.vi)} onClick={()=>navigator.clipboard?.writeText("Multi-channel skill copied!")}>Ã°ÂÂÂ Copy Skill</button>
+If a prospect replies on any channel, continue the conversation there. If they give a phone number → schedule a call. If they ask for pricing → generate a proposal.`}</div>
+            <button style={bt(T.vi)} onClick={()=>navigator.clipboard?.writeText("Multi-channel skill copied!")}>📋 Copy Skill</button>
           </div>
         </div>
       </div>
@@ -1051,20 +1114,31 @@ If a prospect replies on any channel, continue the conversation there. If they g
 
     return <div>
       <h2 style={{fontSize:19,fontWeight:700,fontFamily:F.d,marginBottom:10}}>Command Center</h2>
-      {/* Ã°ÂÂÂ¨ Human Escalation Banner */}
+      {/* Active Workflows Panel */}
+      {_agentBus.msgs.length>0&&<div style={{background:T.sa,borderRadius:9,padding:12,marginBottom:12,border:"1px solid "+T.bd}}>
+        <div style={{fontSize:11,fontWeight:700,color:T.br,marginBottom:6}}>🔄 Active Workflows ({_agentBus.msgs.filter(m=>!m.read).length} pending)</div>
+        {_agentBus.msgs.filter(m=>!m.read).slice(-5).map((m,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",padding:"4px 0",borderBottom:"1px solid "+T.bd+"30",fontSize:11}}>
+          <span style={{color:T.br,fontWeight:600}}>{AGENT_CONTACTS[m.from]?.name||m.from}</span>
+          <span style={{color:T.td}}>→</span>
+          <span style={{color:T.em,fontWeight:600}}>{AGENT_CONTACTS[m.to]?.name||m.to}</span>
+          <span style={{color:T.ts,flex:1}}>{m.data?.action?.substring(0,50)||m.data?.message?.substring(0,50)||m.type}</span>
+          <span style={{fontSize:9,color:T.td}}>{new Date(m.ts).toLocaleTimeString()}</span>
+        </div>)}
+      </div>}
+      {/* 🚨 Human Escalation Banner */}
       {flaggedLeads.length>0&&<div style={{background:`${T.rs}10`,border:`1px solid ${T.rs}40`,borderRadius:9,padding:12,marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-          <span style={{fontSize:16}}>Ã°ÂÂÂ¨</span>
+          <span style={{fontSize:16}}>🚨</span>
           <div style={{fontSize:13,fontWeight:700,color:T.rs}}>Human Attention Required ({flaggedLeads.length})</div>
         </div>
         <div style={{fontSize:11,color:T.ts,marginBottom:8}}>These leads are at Proposal stage or beyond, or exceed AED 10K. Review and send proposals manually.</div>
         {flaggedLeads.map(l=>{const svc=pricing.find(p=>p.id===l.serviceType);const ag=agents.find(a=>a.id===l.assignedTo);
           return <div key={l.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${T.rs}20`,cursor:"pointer"}} onClick={()=>nav("leads")}>
-            <span style={{fontSize:11}}>{svc?.icon||"Ã°ÂÂÂ"}</span>
-            <div style={{flex:1}}><span style={{fontSize:12,fontWeight:600}}>{l.name}</span> <span style={{fontSize:10.5,color:T.ts}}>ÃÂ· {l.contactName} ÃÂ· {l.stage}</span></div>
+            <span style={{fontSize:11}}>{svc?.icon||"📌"}</span>
+            <div style={{flex:1}}><span style={{fontSize:12,fontWeight:600}}>{l.name}</span> <span style={{fontSize:10.5,color:T.ts}}>· {l.contactName} · {l.stage}</span></div>
             <span style={{fontSize:12,fontWeight:700,color:T.em,fontFamily:F.m}}>{l.val?.toLocaleString()} AED</span>
             {ag&&<Av a={ag} size={18} />}
-            <button style={{...bt(T.rs),padding:"3px 8px",fontSize:9}} onClick={e=>{e.stopPropagation();nav("proposals");}}>Ã°ÂÂÂ Send Proposal</button>
+            <button style={{...bt(T.rs),padding:"3px 8px",fontSize:9}} onClick={e=>{e.stopPropagation();nav("proposals");}}>📄 Send Proposal</button>
           </div>;})}
       </div>}
       <div style={{display:"flex",gap:6,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
@@ -1076,17 +1150,17 @@ If a prospect replies on any channel, continue the conversation there. If they g
         {/* Custom date range */}
         <div style={{display:"flex",gap:4,alignItems:"center"}}>
           <input type="date" style={{...ip,width:120,padding:"4px 6px",fontSize:10}} value={customFrom} onChange={e=>{setCustomFrom(e.target.value);setDateRange("custom");}} />
-          <span style={{fontSize:10,color:T.td}}>Ã¢ÂÂ</span>
+          <span style={{fontSize:10,color:T.td}}>→</span>
           <input type="date" style={{...ip,width:120,padding:"4px 6px",fontSize:10}} value={customTo} onChange={e=>{setCustomTo(e.target.value);setDateRange("custom");}} />
         </div>
         <select style={{...ip,width:140,padding:"4px 8px",fontSize:10.5}} value={filterCountry} onChange={e=>setFilterCountry(e.target.value)}>
-          {allCountries.map(c=><option key={c} value={c}>{c==="All"?"Ã°ÂÂÂ All Locations":c}</option>)}
+          {allCountries.map(c=><option key={c} value={c}>{c==="All"?"📍 All Locations":c}</option>)}
         </select>
         <select style={{...ip,width:140,padding:"4px 8px",fontSize:10.5}} value={filterService} onChange={e=>setFilterService(e.target.value)}>
-          <option value="All">Ã°ÂÂÂ¢ All Services</option>
+          <option value="All">🏢 All Services</option>
           {pricing.map(p=><option key={p.id} value={p.id}>{p.icon} {p.name}</option>)}
         </select>
-        {(filterCountry!=="All"||filterService!=="All"||dateRange!=="all")&&<button style={{...btG(T.rs),padding:"3px 8px",fontSize:9.5}} onClick={()=>{setFilterCountry("All");setFilterService("All");setDateRange("all");setCustomFrom("");setCustomTo("");}}>Ã¢ÂÂ Clear</button>}
+        {(filterCountry!=="All"||filterService!=="All"||dateRange!=="all")&&<button style={{...btG(T.rs),padding:"3px 8px",fontSize:9.5}} onClick={()=>{setFilterCountry("All");setFilterService("All");setDateRange("all");setCustomFrom("");setCustomTo("");}}>✕ Clear</button>}
         {(filterCountry!=="All"||filterService!=="All")&&<span style={{fontSize:10,color:T.am}}>{fl.length}/{leads.length}</span>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:9,marginBottom:12}}>
@@ -1120,18 +1194,18 @@ If a prospect replies on any channel, continue the conversation there. If they g
           <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Activity</div>
           {logs.slice(0,6).map(l=><div key={l.id} style={{display:"flex",alignItems:"center",gap:7,padding:"4px 0",borderBottom:`1px solid ${T.bd}`,cursor:"pointer"}}
             onClick={()=>{const ag=agents.find(a=>a.id===l.a);if(ag)setView(`a:${ag.id}`);}}>
-            {(()=>{const ag=agents.find(a=>a.id===l.a);return ag?<Av a={ag} size={22} />:<span>Ã°ÂÂ¤Â</span>;})()}
+            {(()=>{const ag=agents.find(a=>a.id===l.a);return ag?<Av a={ag} size={22} />:<span>🤖</span>;})()}
             <div style={{flex:1,fontSize:11.5}}>{l.m}</div><span style={{fontSize:9.5,color:T.td}}>{l.t}</span>
           </div>)}
         </div>
       </div>
-      {/* Detail panel Ã¢ÂÂ also renders here (below pipeline) so it's visible when clicking stages */}
+      {/* Detail panel — also renders here (below pipeline) so it's visible when clicking stages */}
       {detail&&<DetailPanel {...detail} onClose={()=>setDetail(null)} />}
       <div style={cd}>
-        <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>Ã°ÂÂÂ Agent Leaderboard</div>
+        <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>🏆 Agent Leaderboard</div>
         {/* KPI summary counters */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6,marginBottom:12}}>
-          {[{l:"Total Calls",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.daily.find(k=>k.m.toLowerCase().includes("call"));return s+(k?k.t:0);},0),c:T.am,i:"Ã°ÂÂÂ"},{l:"DMs/Day",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.daily.find(k=>k.m.toLowerCase().includes("dm"));return s+(k?k.t:0);},0),c:T.pk,i:"Ã°ÂÂÂ¬"},{l:"Emails/Day",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.daily.find(k=>k.m.toLowerCase().includes("email"));return s+(k?k.t:0);},0),c:T.br,i:"Ã¢ÂÂÃ¯Â¸Â"},{l:"Leads/Month",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.monthly.find(k=>k.m.toLowerCase().includes("lead"));return s+(k?k.t:0);},0),c:T.sk,i:"Ã°ÂÂÂ¯"},{l:"Deals/Month",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.monthly.find(k=>k.m.toLowerCase().includes("deal")||k.m.toLowerCase().includes("close"));return s+(k?k.t:0);},0),c:T.em,i:"Ã°ÂÂ¤Â"},{l:"Posts/Day",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.daily.find(k=>k.m.toLowerCase().includes("post"));return s+(k?k.t:0);},0),c:T.vi,i:"Ã°ÂÂÂ¢"}].map((x,i)=>
+          {[{l:"Total Calls",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.daily.find(k=>k.m.toLowerCase().includes("call"));return s+(k?k.t:0);},0),c:T.am,i:"📞"},{l:"DMs/Day",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.daily.find(k=>k.m.toLowerCase().includes("dm"));return s+(k?k.t:0);},0),c:T.pk,i:"💬"},{l:"Emails/Day",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.daily.find(k=>k.m.toLowerCase().includes("email"));return s+(k?k.t:0);},0),c:T.br,i:"✉️"},{l:"Leads/Month",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.monthly.find(k=>k.m.toLowerCase().includes("lead"));return s+(k?k.t:0);},0),c:T.sk,i:"🎯"},{l:"Deals/Month",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.monthly.find(k=>k.m.toLowerCase().includes("deal")||k.m.toLowerCase().includes("close"));return s+(k?k.t:0);},0),c:T.em,i:"🤝"},{l:"Posts/Day",v:agents.reduce((s,a)=>{const k=(a.config||DEF_CFG).kpis.daily.find(k=>k.m.toLowerCase().includes("post"));return s+(k?k.t:0);},0),c:T.vi,i:"📢"}].map((x,i)=>
             <div key={i} style={{background:T.sa,borderRadius:6,padding:8,textAlign:"center",border:`1px solid ${T.bd}`}}>
               <div style={{fontSize:12}}>{x.i}</div><div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div><div style={{fontSize:8.5,color:T.td,textTransform:"uppercase"}}>{x.l}</div>
             </div>)}
@@ -1168,30 +1242,30 @@ If a prospect replies on any channel, continue the conversation there. If they g
                 {["#","Agent","Dept","Leads","Proposals","Closed","Calls/d","Msgs/d","Emails/d","Pipeline"].map(h=><th key={h} style={{textAlign:"left",padding:"5px 6px",fontWeight:600,color:T.td,fontSize:8.5,textTransform:"uppercase"}}>{h}</th>)}
               </tr></thead>
               <tbody>{ranked.map((a,i)=>{const alc=rc(a.role);return <tr key={a.id} style={{borderBottom:`1px solid ${T.bd}`,background:i<3?`${T.am}0${8-i*2}`:""}}>
-                <td style={{padding:"6px",fontWeight:700,color:i===0?T.am:i===1?T.ts:i===2?T.am:T.td,fontSize:12}}>{i===0?"Ã°ÂÂ¥Â":i===1?"Ã°ÂÂ¥Â":i===2?"Ã°ÂÂ¥Â":i+1}</td>
-                <td style={{padding:"6px",cursor:"pointer"}} onClick={()=>setDetail({title:`${a.name} Ã¢ÂÂ KPI Scorecard`,color:alc,items:[],agent:a})}>
+                <td style={{padding:"6px",fontWeight:700,color:i===0?T.am:i===1?T.ts:i===2?T.am:T.td,fontSize:12}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</td>
+                <td style={{padding:"6px",cursor:"pointer"}} onClick={()=>setDetail({title:`${a.name} — KPI Scorecard`,color:alc,items:[],agent:a})}>
                   <div style={{display:"flex",alignItems:"center",gap:5}}><Av a={a} size={28} /><div><div style={{fontWeight:600,fontSize:11.5,textDecoration:"underline",textDecorationStyle:"dotted",textUnderlineOffset:2}}>{a.name}</div><div style={{fontSize:9,color:T.td}}>{a.title}</div></div></div></td>
                 <td style={{padding:"6px"}}><span style={{...bdg(alc),fontSize:9}}>{ROLES[a.role]?.label}</span></td>
-                <td style={{padding:"6px",fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}} onClick={e=>cellClick(e,`${a.name} Ã¢ÂÂ All Leads`,alc,a.allLeads)}>{a.leads}</td>
-                <td style={{padding:"6px",color:T.vi,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}} onClick={e=>cellClick(e,`${a.name} Ã¢ÂÂ Proposals`,T.vi,a.propLeads)}>{a.props}</td>
-                <td style={{padding:"6px",color:T.em,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}} onClick={e=>cellClick(e,`${a.name} Ã¢ÂÂ Closed Deals`,T.em,a.closedLeads)}>{a.closed}</td>
+                <td style={{padding:"6px",fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}} onClick={e=>cellClick(e,`${a.name} — All Leads`,alc,a.allLeads)}>{a.leads}</td>
+                <td style={{padding:"6px",color:T.vi,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}} onClick={e=>cellClick(e,`${a.name} — Proposals`,T.vi,a.propLeads)}>{a.props}</td>
+                <td style={{padding:"6px",color:T.em,fontWeight:700,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}} onClick={e=>cellClick(e,`${a.name} — Closed Deals`,T.em,a.closedLeads)}>{a.closed}</td>
                 <td style={{padding:"6px",color:T.am}}>{a.calls}</td>
                 <td style={{padding:"6px",color:T.pk}}>{a.msgs}</td>
                 <td style={{padding:"6px",color:T.br}}>{a.emails}</td>
-                <td style={{padding:"6px",fontFamily:F.m,fontWeight:700,color:T.em,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}} onClick={e=>cellClick(e,`${a.name} Ã¢ÂÂ Pipeline (${(a.val/1000).toFixed(0)}K AED)`,T.em,a.allLeads)}>{(a.val/1000).toFixed(0)}K</td>
+                <td style={{padding:"6px",fontFamily:F.m,fontWeight:700,color:T.em,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}} onClick={e=>cellClick(e,`${a.name} — Pipeline (${(a.val/1000).toFixed(0)}K AED)`,T.em,a.allLeads)}>{(a.val/1000).toFixed(0)}K</td>
               </tr>})}</tbody>
             </table>
           </div></div>;
         })()}
 
-        {/* Agent KPI Scorecard Ã¢ÂÂ shows when clicking agent name */}
+        {/* Agent KPI Scorecard — shows when clicking agent name */}
         {detail?.agent&&<div style={{marginTop:12,background:T.sa,borderRadius:9,padding:14,border:`1px solid ${detail.color}`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <Av a={detail.agent} size={36} />
-              <div><div style={{fontSize:14,fontWeight:700}}>{detail.agent.name}</div><div style={{fontSize:11,color:T.ts}}>{detail.agent.title} ÃÂ· {ROLES[detail.agent.role]?.label}</div></div>
+              <div><div style={{fontSize:14,fontWeight:700}}>{detail.agent.name}</div><div style={{fontSize:11,color:T.ts}}>{detail.agent.title} · {ROLES[detail.agent.role]?.label}</div></div>
             </div>
-            <button onClick={()=>setDetail(null)} style={{background:"transparent",border:"none",color:T.td,cursor:"pointer",fontSize:16}}>ÃÂ</button>
+            <button onClick={()=>setDetail(null)} style={{background:"transparent",border:"none",color:T.td,cursor:"pointer",fontSize:16}}>×</button>
           </div>
           {[{p:"Daily Targets",d:detail.agent.kd,c:T.br,actual:{leads:detail.agent.leads,calls:0,emails:0,dms:0}},{p:"Weekly Targets",d:detail.agent.kw,c:T.vi},{p:"Monthly Targets",d:detail.agent.km,c:T.em}].map(g=><div key={g.p} style={{marginBottom:10}}>
             <div style={{fontSize:11,fontWeight:600,color:g.c,marginBottom:6}}>{g.p}</div>
@@ -1205,7 +1279,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
                   <div style={{display:"flex",alignItems:"baseline",gap:4}}>
                     <span style={{fontSize:16,fontWeight:700,color:hit?T.em:actual>0?g.c:T.td}}>{actual}</span>
                     <span style={{fontSize:11,color:T.td}}>/ {kpi.t}</span>
-                    {hit&&<span style={{fontSize:10,color:T.em}}>Ã¢ÂÂ</span>}
+                    {hit&&<span style={{fontSize:10,color:T.em}}>✓</span>}
                   </div>
                   <div style={{width:"100%",height:3,borderRadius:2,background:`${g.c}20`,marginTop:4}}>
                     <div style={{height:"100%",borderRadius:2,background:hit?T.em:g.c,width:`${pct}%`,transition:"width .3s"}} />
@@ -1216,7 +1290,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
             </div>
           </div>)}
           <div style={{display:"flex",gap:6,marginTop:8}}>
-            <button style={bt(detail.color)} onClick={()=>setView(`a:${detail.agent.id}`)}>View Workspace Ã¢ÂÂ</button>
+            <button style={bt(detail.color)} onClick={()=>setView(`a:${detail.agent.id}`)}>View Workspace →</button>
             <button style={btG(T.ts)} onClick={()=>setDetail(null)}>Close</button>
           </div>
         </div>}
@@ -1225,7 +1299,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
   }
 
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ EDITABLE TARGETING Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ EDITABLE TARGETING ═══
   function TargetingEditor({agent,agents,setAgents,T,cd,ip,bt,btG,bdg,c}){
     const cfg=agent.config||DEF_CFG;
     const[newLoc,setNewLoc]=useState("");
@@ -1268,7 +1342,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
           {items.map((item,i)=>(
             <span key={i} style={{...bdg(color),cursor:"pointer",paddingRight:4}} title="Click to remove">
               {icon} {item}
-              <span onClick={()=>removeItem(path,items,i)} style={{marginLeft:4,cursor:"pointer",opacity:0.6,fontSize:12}}>ÃÂ</span>
+              <span onClick={()=>removeItem(path,items,i)} style={{marginLeft:4,cursor:"pointer",opacity:0.6,fontSize:12}}>×</span>
             </span>
           ))}
         </div>
@@ -1281,36 +1355,36 @@ If a prospect replies on any channel, continue the conversation there. If they g
     );
 
     return <div>
-      <div style={{fontSize:11,color:T.td,marginBottom:12}}>Click ÃÂ to remove items. Type + Enter or click Add to add new ones. Changes save automatically.</div>
+      <div style={{fontSize:11,color:T.td,marginBottom:12}}>Click × to remove items. Type + Enter or click Add to add new ones. Changes save automatically.</div>
 
-      <EditableList title="Ã°ÂÂÂ Locations (Country, City, Area)" icon="Ã°ÂÂÂ" color={T.sk}
+      <EditableList title="📍 Locations (Country, City, Area)" icon="📍" color={T.sk}
         path="targeting.locations" items={cfg.targeting.locations}
         newVal={newLoc} setNewVal={setNewLoc}
         placeholder="e.g. Dubai Marina, UAE  or  Riyadh, Saudi Arabia" />
 
-      <EditableList title="Ã°ÂÂÂ¢ Industries / Focus" icon="" color={c}
+      <EditableList title="🏢 Industries / Focus" icon="" color={c}
         path="targeting.industries" items={cfg.targeting.industries}
         newVal={newInd} setNewVal={setNewInd}
         placeholder="e.g. Healthcare  or  Luxury Retail" />
 
-      <EditableList title="Ã°ÂÂÂ¤ Target Professions / Titles" icon="Ã°ÂÂÂ¤" color={T.vi}
+      <EditableList title="👤 Target Professions / Titles" icon="👤" color={T.vi}
         path="targeting.professions" items={cfg.targeting.professions||[]}
         newVal={newProf} setNewVal={setNewProf}
         placeholder="e.g. Marketing Director  or  CEO" />
 
-      <EditableList title="Ã¢ÂÂ¡ Trigger Signals" icon="Ã¢ÂÂ¡" color={T.am}
+      <EditableList title="⚡ Trigger Signals" icon="⚡" color={T.am}
         path="targeting.signals" items={cfg.targeting.signals}
         newVal={newSig} setNewVal={setNewSig}
         placeholder="e.g. Just raised funding  or  Expanding to new market" />
 
-      <EditableList title="Ã¢ÂÂ Data to Collect" icon="Ã¢ÂÂ" color={T.em}
+      <EditableList title="✓ Data to Collect" icon="✓" color={T.em}
         path="dataToCollect" items={cfg.dataToCollect}
         newVal={newData} setNewVal={setNewData}
         placeholder="e.g. Annual marketing budget  or  Current agency name" />
 
       <div style={cd}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-          <div style={{fontSize:12,fontWeight:600}}>Ã°ÂÂÂ¯ Pitch Focus</div>
+          <div style={{fontSize:12,fontWeight:600}}>🎯 Pitch Focus</div>
           <button style={btG(T.ts)} onClick={()=>{if(editPitch){updateCfg("pitchFocus",pitchVal);}setEditPitch(!editPitch);}}>{editPitch?"Save":"Edit"}</button>
         </div>
         {editPitch
@@ -1321,36 +1395,36 @@ If a prospect replies on any channel, continue the conversation there. If they g
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ IMAGE GENERATION PANEL Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ IMAGE GENERATION PANEL ═══
   function ImageGen({T,cd,ip,bt,btG,bdg,generateImage,apiKeys,agent,addLog}){
     const[prompt,setPrompt]=useState("");
     const[imgLoading,setImgLoading]=useState(false);
     const[imgResult,setImgResult]=useState(null);
-    const gen=async()=>{if(!prompt)return;setImgLoading(true);setImgResult(null);const r=await generateImage(prompt);setImgResult(r);setImgLoading(false);if(!r.error)addLog(agent.id,`${agent.name}: Generated image Ã¢ÂÂ ${prompt.slice(0,40)}`);};
+    const gen=async()=>{if(!prompt)return;setImgLoading(true);setImgResult(null);const r=await generateImage(prompt);setImgResult(r);setImgLoading(false);if(!r.error)addLog(agent.id,`${agent.name}: Generated image — ${prompt.slice(0,40)}`);};
     return <div style={{...cd,borderColor:`${T.vi}30`}}>
-      <div style={{fontSize:12.5,fontWeight:700,color:T.vi,marginBottom:8}}>Ã°ÂÂÂ¨ Nano Banana Ã¢ÂÂ AI Image Generation</div>
-      {!apiKeys.gemini?<div style={{fontSize:11.5,color:T.am}}>Ã¢ÂÂ Ã¯Â¸Â Add your Gemini API key in Integrations to enable image generation.</div>:<>
+      <div style={{fontSize:12.5,fontWeight:700,color:T.vi,marginBottom:8}}>🎨 Nano Banana — AI Image Generation</div>
+      {!apiKeys.gemini?<div style={{fontSize:11.5,color:T.am}}>⚠️ Add your Gemini API key in Integrations to enable image generation.</div>:<>
         <div style={{display:"flex",gap:7,marginBottom:8}}>
           <input style={{...ip,flex:1}} placeholder="Describe the image (e.g. Luxury Dubai restaurant interior, warm lighting, professional food photography setup)" value={prompt} onChange={e=>setPrompt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&gen()} />
-          <button style={bt(T.vi)} onClick={gen} disabled={imgLoading}>{imgLoading?"Ã¢ÂÂ³ Generating...":"Ã°ÂÂÂ¨ Generate"}</button>
+          <button style={bt(T.vi)} onClick={gen} disabled={imgLoading}>{imgLoading?"⏳ Generating...":"🎨 Generate"}</button>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
           {["Kapturise portfolio showcase, black & red, Dubai skyline","Professional food photography flat lay, marble surface","Corporate event coverage, Dubai ballroom, elegant","Before/after product photography comparison"].map((s,i)=>
             <button key={i} style={{background:T.sa,border:`1px solid ${T.bd}`,borderRadius:5,padding:"3px 8px",fontSize:9.5,color:T.ts,cursor:"pointer",fontFamily:F.d}} onClick={()=>setPrompt(s)}>{s.slice(0,40)}...</button>)}
         </div>
-        {imgResult?.error&&<div style={{fontSize:11.5,color:T.rs,padding:8,background:`${T.rs}10`,borderRadius:6}}>Ã¢ÂÂ {imgResult.error}</div>}
+        {imgResult?.error&&<div style={{fontSize:11.5,color:T.rs,padding:8,background:`${T.rs}10`,borderRadius:6}}>❌ {imgResult.error}</div>}
         {imgResult?.image&&<div style={{borderRadius:8,overflow:"hidden",border:`1px solid ${T.bd}`}}>
           <img src={imgResult.image} alt="Generated" style={{width:"100%",display:"block"}} />
           <div style={{padding:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:10.5,color:T.td}}>Generated by Nano Banana (Gemini)</span>
-            <button style={{...btG(T.em),padding:"3px 10px",fontSize:10}} onClick={()=>{const a=document.createElement("a");a.href=imgResult.image;a.download="kapturise-post.png";a.click();}}>Ã°ÂÂÂ¥ Download</button>
+            <button style={{...btG(T.em),padding:"3px 10px",fontSize:10}} onClick={()=>{const a=document.createElement("a");a.href=imgResult.image;a.download="kapturise-post.png";a.click();}}>📥 Download</button>
           </div>
         </div>}
       </>}
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ CALL PANEL Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ CALL PANEL ═══
   function CallPanel({T,cd,ip,bt,btG,bdg,makeCall,apiKeys,agent,addLog,leads}){
     const[phone,setPhone]=useState("");
     const[script,setScript]=useState("");
@@ -1360,24 +1434,24 @@ If a prospect replies on any channel, continue the conversation there. If they g
     const doCall=async()=>{if(!phone)return;setCallLoading(true);setCallResult(null);const r=await makeCall(phone,script||`Hi, I'm calling from Kapturise about our creative production services for your business.`,agent.name);setCallResult(r);setCallLoading(false);if(r.success)addLog(agent.id,`${agent.name}: Called ${phone}`);};
     const selectLead=(id)=>{const l=leads.find(x=>x.id===parseInt(id));if(l){setPhone(l.phone||"");setScript(`Hi ${l.contactName?.split(" ")[0]||"there"}, this is ${agent.name} from Kapturise. I'm following up on ${l.name}'s content needs. We specialize in ${l.ind} photography and videography here in Dubai...`);setSelLead(id);}};
     return <div style={{...cd,borderColor:`${T.am}30`}}>
-      <div style={{fontSize:12.5,fontWeight:700,color:T.am,marginBottom:8}}>Ã°ÂÂÂ Make a Call (Bland.ai)</div>
-      {!apiKeys.bland?<div style={{fontSize:11.5,color:T.am}}>Ã¢ÂÂ Ã¯Â¸Â Add your Bland.ai API key in Integrations to enable AI phone calls.</div>:<>
+      <div style={{fontSize:12.5,fontWeight:700,color:T.am,marginBottom:8}}>📞 Make a Call (Bland.ai)</div>
+      {!apiKeys.bland?<div style={{fontSize:11.5,color:T.am}}>⚠️ Add your Bland.ai API key in Integrations to enable AI phone calls.</div>:<>
         <div style={{marginBottom:8}}>
           <div style={{fontSize:10,color:T.td,marginBottom:3}}>Quick select a lead to call:</div>
           <select style={ip} value={selLead} onChange={e=>selectLead(e.target.value)}>
-            <option value="">Ã¢ÂÂ Select a lead Ã¢ÂÂ</option>
-            {leads.filter(l=>l.phone&&l.assignedTo===agent.id).map(l=><option key={l.id} value={l.id}>{l.name} Ã¢ÂÂ {l.contactName} ({l.phone})</option>)}
-            {leads.filter(l=>l.phone&&l.assignedTo!==agent.id).map(l=><option key={l.id} value={l.id}>{l.name} Ã¢ÂÂ {l.contactName} ({l.phone})</option>)}
+            <option value="">— Select a lead —</option>
+            {leads.filter(l=>l.phone&&l.assignedTo===agent.id).map(l=><option key={l.id} value={l.id}>{l.name} — {l.contactName} ({l.phone})</option>)}
+            {leads.filter(l=>l.phone&&l.assignedTo!==agent.id).map(l=><option key={l.id} value={l.id}>{l.name} — {l.contactName} ({l.phone})</option>)}
           </select>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
           <div><div style={{fontSize:10,color:T.td,marginBottom:3}}>Phone Number</div><input style={ip} placeholder="+971-50-XXX-XXXX" value={phone} onChange={e=>setPhone(e.target.value)} /></div>
-          <div style={{display:"flex",alignItems:"flex-end"}}><button style={{...bt(T.am),width:"100%"}} onClick={doCall} disabled={callLoading||!phone}>{callLoading?"Ã¢ÂÂ³ Calling...":"Ã°ÂÂÂ Call Now"}</button></div>
+          <div style={{display:"flex",alignItems:"flex-end"}}><button style={{...bt(T.am),width:"100%"}} onClick={doCall} disabled={callLoading||!phone}>{callLoading?"⏳ Calling...":"📞 Call Now"}</button></div>
         </div>
         <div><div style={{fontSize:10,color:T.td,marginBottom:3}}>Call Script (AI will say this)</div>
           <textarea style={{...ip,minHeight:60,resize:"vertical"}} placeholder="What should the AI say on the call?" value={script} onChange={e=>setScript(e.target.value)} /></div>
-        {callResult?.success&&<div style={{marginTop:8,padding:8,background:`${T.em}10`,borderRadius:6,fontSize:12,color:T.em}}>Ã¢ÂÂ {callResult.msg}</div>}
-        {callResult?.error&&<div style={{marginTop:8,padding:8,background:`${T.rs}10`,borderRadius:6,fontSize:12,color:T.rs}}>Ã¢ÂÂ {callResult.error}</div>}
+        {callResult?.success&&<div style={{marginTop:8,padding:8,background:`${T.em}10`,borderRadius:6,fontSize:12,color:T.em}}>✅ {callResult.msg}</div>}
+        {callResult?.error&&<div style={{marginTop:8,padding:8,background:`${T.rs}10`,borderRadius:6,fontSize:12,color:T.rs}}>❌ {callResult.error}</div>}
       </>}
     </div>;
   }
@@ -1401,7 +1475,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
     const[newStep,setNewStep]=useState({day:"",ch:"Instagram",act:""});
 
     const updateCfg=(fn)=>setAgents(prev=>prev.map(a=>a.id===agent.id?{...a,config:fn(a.config||DEF_CFG)}:a));
-    // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ INTENT DETECTION Ã¢ÂÂ parses AI output for phone numbers, WhatsApp requests, escalation triggers Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+    // ═══ INTENT DETECTION — parses AI output for phone numbers, WhatsApp requests, escalation triggers ═══
     const detectIntent=(text)=>{
       const intents=[];
       // Detect phone numbers
@@ -1423,61 +1497,71 @@ If a prospect replies on any channel, continue the conversation there. If they g
     const run=async(p,l)=>{if(!p)return;setLoading(true);setResult(null);try{
       const r=await callAI(buildSys(agent),p);setResult(r);addLog(agent.id,`${agent.name}: ${l}`);try{const _np=parseProspectsFromAI(r,agent.id);if(_np.length>0){setLeads(prev=>{const _en=prev.map(x=>x.name.toLowerCase());const _uq=_np.filter(p=>!_en.includes(p.name.toLowerCase()));if(_uq.length>0){showToast(_uq.length+" new lead"+(_uq.length>1?"s":"")+" added to CRM","success");
 /* AUTO-OUTREACH: email every prospect with an email address */
-if(apiKeys.gmail&&apiKeys.gmailEmail){_uq.forEach(p=>{if(p.email){const subj="Kapturise Creative Agency - Premium Visual Content for "+p.name;const body="Hi "+(p.contactName||"there")+",\n\nI'm "+(AGENT_CONTACTS[agent.id]?.name||agent.name)+" from Kapturise, a leading creative media agency in Dubai.\n\nI noticed "+p.name+" could benefit from professional visual content Ã¢ÂÂ we specialize in photography, videography, and social media content for brands like yours.\n\nWould you be open to a quick 15-minute call this week to explore how we can help elevate your brand's visual presence?\n\nBest regards,\n"+(AGENT_CONTACTS[agent.id]?.name||agent.name)+"\nKapturise Creative Agency\n+971559137354\ncontact@kapturise.com";sendOutreachEmail(p.email,subj,body,agent.id);addLog(agent.id,"\u2709 Email sent to "+p.email+" ("+p.name+")");}});}
+if(apiKeys.gmail&&apiKeys.gmailEmail){_uq.forEach(p=>{if(p.email){const subj="Kapturise Creative Agency - Premium Visual Content for "+p.name;const body="Hi "+(p.contactName||"there")+",\n\nI'm "+(AGENT_CONTACTS[agent.id]?.name||agent.name)+" from Kapturise, a leading creative media agency in Dubai.\n\nI noticed "+p.name+" could benefit from professional visual content — we specialize in photography, videography, and social media content for brands like yours.\n\nWould you be open to a quick 15-minute call this week to explore how we can help elevate your brand's visual presence?\n\nBest regards,\n"+(AGENT_CONTACTS[agent.id]?.name||agent.name)+"\nKapturise Creative Agency\n+971559137354\ncontact@kapturise.com";sendOutreachEmail(p.email,subj,body,agent.id);addLog(agent.id,"\u2709 Email sent to "+p.email+" ("+p.name+")");}});}
 /* AUTO-CALL: queue calls for prospects with phone numbers */
 if(apiKeys.vapi||apiKeys.bland){_uq.forEach(p=>{if(p.phone&&p.phone.length>7){addLog(agent.id,"\ud83d\udcde Call queued: "+p.name+" ("+p.phone+")");setTimeout(()=>{makeCall(p.phone,"You are calling "+(p.contactName||"the decision maker")+" at "+p.name+". Introduce yourself as "+(AGENT_CONTACTS[agent.id]?.name||agent.name)+" from Kapturise creative agency. Mention you specialize in premium photography and videography for brands in Dubai. Ask if they'd be interested in a portfolio review.",AGENT_CONTACTS[agent.id]?.name||agent.name,agent.id);},2000);}});}
 /* 
 // AGENT HANDOFF: Notify content team to create personalized assets
 newProspects.forEach(function(p){if(p.name){agentNotify(agent.id,"zara","New prospect "+p.name+" needs content assets");agentNotify(agent.id,"kai","New prospect "+p.name+" — research their brand voice");}});
+
+// CROSS-TEAM HANDOFF: Notify content + investor teams about new prospects
+newProspects.forEach(function(p){
+  if(p.name){
+    triggerWorkflow("crossTeam","new_prospect",{name:p.name,industry:p.ind||"",contact:p.contactName||""});
+    if(p.val&&p.val>20000)triggerWorkflow("crossTeam","high_value_lead",{name:p.name,value:p.val});
+    triggerWorkflow("content","content_brief",{prospect:p.name,industry:p.ind||""});
+  }
+});
 SCHEDULE FOLLOW-UPS for all new prospects */
 const fuDate=new Date();fuDate.setDate(fuDate.getDate()+3);const fuStr=fuDate.toISOString().split("T")[0];
 setFollowUps(prev=>[...prev,..._uq.map((p,i)=>({id:Date.now()+i+900,leadId:p.id,leadName:p.name,contact:p.contactName||"Decision Maker",phone:p.phone||"",type:"follow-up",date:fuStr,time:"10:00",agent:agent.id,notes:"Auto-scheduled: initial outreach sent via "+(p.email?"email":"DM")+". Follow up if no response."}))]);
 _uq.forEach(p=>addLog(agent.id,"\ud83d\udcc5 Follow-up scheduled for "+p.name+" on "+fuStr));
 return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe);}
 
-      // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ AUTO-SAVE to CRM Ã¢ÂÂ find matching lead and log the interaction Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+      // ═══ AUTO-SAVE to CRM — find matching lead and log the interaction ═══
       const matchedLeads=leads.filter(ld=>ld.assignedTo===agent.id);
       if(matchedLeads.length>0){
-        const taskLog={type:"note",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),msg:`Ã°ÂÂ¤Â Agent task: ${l}`,summary:`Agent ran: ${l}`,transcript:r.slice(0,2000),direction:"outbound"};
+        const taskLog={type:"note",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),msg:`🤖 Agent task: ${l}`,summary:`Agent ran: ${l}`,transcript:r.slice(0,2000),direction:"outbound"};
         // Log to the first assigned lead (or all if prospecting)
         if(matchedLeads.length===1){
           setLeads(prev=>prev.map(ld=>ld.id===matchedLeads[0].id?{...ld,logs:[...(ld.logs||[]),taskLog]}:ld));
         }
       }
 
-      // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ INTENT DETECTION on the AI output Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+      // ═══ INTENT DETECTION on the AI output ═══
       const intents=detectIntent(r);
       const alerts=[];
       intents.forEach(intent=>{
-        if(intent.type==="wants_call"){alerts.push(`Ã°ÂÂÂ CALL REQUESTED${intent.data?` Ã¢ÂÂ Number: ${intent.data}`:""}. Schedule a call or escalate to human.`);}
+        if(intent.type==="wants_call"){alerts.push(`📞 CALL REQUESTED${intent.data?` — Number: ${intent.data}`:""}. Schedule a call or escalate to human.`);}
         if(intent.type==="wants_whatsapp"){
-          alerts.push(`Ã°ÂÂÂ¬ WHATSAPP REQUESTED${intent.data?` Ã¢ÂÂ Number: ${intent.data}`:""}.`);
-          if(intent.data&&apiKeys.twilio){alerts.push("Ã¢ÂÂ WhatsApp API connected Ã¢ÂÂ agent can message automatically.");}
-          else if(intent.data){alerts.push("Ã¢ÂÂ Ã¯Â¸Â No WhatsApp API. Flagging for human to message manually.");}
+          alerts.push(`💬 WHATSAPP REQUESTED${intent.data?` — Number: ${intent.data}`:""}.`);
+          if(intent.data&&apiKeys.twilio){alerts.push("✅ WhatsApp API connected — agent can message automatically.");}
+          else if(intent.data){alerts.push("⚠️ No WhatsApp API. Flagging for human to message manually.");}
         }
-        if(intent.type==="wants_proposal"){alerts.push("Ã°ÂÂÂ PROPOSAL REQUESTED Ã¢ÂÂ Flagging for human review. Go to Proposals page.");}
-        if(intent.type==="wants_meeting"){alerts.push("Ã°ÂÂÂ MEETING REQUESTED Ã¢ÂÂ Schedule via Follow-Up Queue.");}
-        if(intent.type==="not_interested"){alerts.push("Ã¢ÂÂ NOT INTERESTED Ã¢ÂÂ Mark lead as cold. Stop outreach.");}
+        if(intent.type==="wants_proposal"){alerts.push("📄 PROPOSAL REQUESTED — Flagging for human review. Go to Proposals page.");}
+        if(intent.type==="wants_meeting"){alerts.push("📅 MEETING REQUESTED — Schedule via Follow-Up Queue.");}
+        if(intent.type==="not_interested"){alerts.push("❌ NOT INTERESTED — Mark lead as cold. Stop outreach.");}
       });
       if(alerts.length>0){
-        setResult(prev=>prev+"\n\nÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ Ã°ÂÂÂ¨ AGENT DETECTED Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ\n"+alerts.join("\n"));
+        setResult(prev=>prev+"\n\n━━━ 🚨 AGENT DETECTED ━━━\n"+alerts.join("\n"));
         // Auto-create follow-up for call/whatsapp/meeting requests
         intents.forEach(intent=>{
           if(intent.type==="wants_call"||intent.type==="wants_whatsapp"||intent.type==="wants_meeting"){
-            autoCreateFollowUp(agent.id,matchedLeads[0]?.name||"Unknown",matchedLeads[0]?.contactName||"",intent.data||matchedLeads[0]?.phone||"",`Ã°ÂÂÂ¨ Auto-detected: ${intent.type==="wants_call"?"Client wants a phone call":intent.type==="wants_whatsapp"?"Client wants WhatsApp message":"Client wants a meeting"}${intent.data?` Ã¢ÂÂ ${intent.data}`:""}`,1);
+            autoCreateFollowUp(agent.id,matchedLeads[0]?.name||"Unknown",matchedLeads[0]?.contactName||"",intent.data||matchedLeads[0]?.phone||"",`🚨 Auto-detected: ${intent.type==="wants_call"?"Client wants a phone call":intent.type==="wants_whatsapp"?"Client wants WhatsApp message":"Client wants a meeting"}${intent.data?` — ${intent.data}`:""}`,1);
           }
         });
       }
     }catch(e){setResult(`Error: ${e.message}`);}finally{setLoading(false);}};
     const doC=()=>{if(custom.trim()){run(custom,custom.slice(0,40)+"...");setCustom("");}};
     useEffect(()=>{if(result&&ref.current)ref.current.scrollIntoView({behavior:"smooth"});},[result]);useEffect(()=>{if(!agent.autoMode)return;let idx=0;let busy=false;const tasks=[
-{name:"Find 5 Prospects via Google",prompt:"Find 5 new potential clients for Kapturise creative agency in Dubai. For each prospect include: company name, website, phone number, email, Instagram handle, decision maker name and title. Focus on "+agent.targeting?.industries?.join(", ")+" companies."},
-{name:"Find Decision Makers",prompt:"For each lead I recently found, research and identify the key decision maker (Marketing Director, Brand Manager, or CEO). Include their full name, title, email, phone, and LinkedIn profile."},
-{name:"Generate Outreach Emails",prompt:"Write personalized cold outreach emails for each of my recent prospects. Each email should mention their specific business, reference a content gap or opportunity, and propose a 15-min call. Include subject line."},
-{name:"Generate DM Scripts",prompt:"Write 10 Instagram DM scripts for outreach to potential clients. Each should be personalized, mention their content, and propose collaboration. Keep under 150 words each."},
-{name:"Cold Call Scripts",prompt:"Write cold call scripts for 5 recent prospects. Each script should: introduce Kapturise, mention a specific observation about their brand, propose a portfolio review, and handle common objections."},
-{name:"Follow-Up Check",prompt:"Review my pipeline and suggest follow-up actions for leads that haven't responded in 3+ days. Suggest email follow-ups, LinkedIn connection requests, and alternative contacts."}
-];const loop=async()=>{if(!agent.autoMode||busy)return;busy=true;const task=tasks[idx%tasks.length];showToast(agent.name+": "+task.name+"...","info");try{await run(task.prompt||task.name,task.name);}catch(e){}idx++;busy=false;};const iv=setInterval(loop,60000);loop();return()=>clearInterval(iv);},[agent.autoMode]);
+      {name:"Find 5 Prospects via Google",prompt:"Find 5 new potential clients for Kapturise creative agency in Dubai. Focus on real estate, F&B, events, ecommerce, hospitality. For each: Company Name, Industry, Contact Person + Title, Email, Phone, LinkedIn, Instagram, Website, and why they need photography/videography.",onComplete:function(){triggerWorkflow("sales","lead_found",{source:"auto_mode"});}},
+      {name:"Find Decision Makers",prompt:"For each lead I recently found, research and identify the key decision maker (CMO, Marketing Director, Brand Manager, etc). Find their LinkedIn profile, email, and phone. Provide detailed contact info.",onComplete:function(){triggerWorkflow("sales","dm_found",{});}},
+      {name:"Generate Outreach Emails",prompt:"Write personalized cold outreach emails for each of my recent prospects. Include: compelling subject line, personalized opening referencing their business, Kapturise value prop for their industry, clear CTA. Professional but warm tone.",onComplete:function(){triggerWorkflow("sales","outreach_ready",{});}},
+      {name:"Generate DM Scripts",prompt:"Write 10 Instagram DM scripts for outreach to potential clients. Short, casual, personalized. Reference their recent posts or brand aesthetic. Include follow-up messages.",onComplete:function(){}},
+      {name:"Cold Call Scripts",prompt:"Write cold call scripts for 5 recent prospects. Include: opening hook, SPIN questions, objection handling, booking the meeting. Dubai-specific cultural notes.",onComplete:function(){}},
+      {name:"Content Brief for Prospects",prompt:"Create a content brief for Zara (Creative Director): design prospect-specific portfolio pieces, case studies, and social proof content that our sales team can use in outreach. Include visual style suggestions.",onComplete:function(){triggerWorkflow("content","content_brief",{source:"auto_mode"});}},
+      {name:"Follow-Up Check",prompt:"Review my pipeline and suggest follow-up actions for leads that haven't responded in 3+ days. Prioritize by deal value. Draft follow-up messages.",onComplete:function(){}}
+    ];const loop=async()=>{if(!agent.autoMode||busy)return;busy=true;const task=tasks[idx%tasks.length];showToast(agent.name+": "+task.name+"...","info");try{await run(task.prompt||task.name,task.name);}catch(e){}idx++;busy=false;};const iv=setInterval(loop,60000);loop();return()=>clearInterval(iv);},[agent.autoMode]);
 
     const isSales=agent.role==="sales";const isIG=false;const isInvestor=agent.role==="investor";const showProspect=isSales||isInvestor;
 
@@ -1507,16 +1591,16 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     };
 
     const runOutreach=()=>{
-      const prompt=`I already have prospects in ${pInd} in ${pLoc}. Now write a complete multi-channel outreach campaign for reaching ${pProf||"decision makers"} in this industry.\n\nGenerate outreach scripts for ALL of these channels:\n${pChannels.map(ch=>`\nÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ ${ch.toUpperCase()} Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ\n${ch==="Instagram"?"Write: 1) Profile warm-up plan (what to like/comment), 2) Opening DM, 3) Follow-up DM if no reply, 4) Voice note script":ch==="Email"?"Write: 1) Cold email #1 (subject + body), 2) Follow-up email #2, 3) Breakup email #3":ch==="Phone"?"Write: 1) Cold call script (2 min), 2) Voicemail script (30 sec), 3) Follow-up call script":ch==="LinkedIn"?"Write: 1) Connection request note, 2) Follow-up message after connect, 3) InMail if not connected":ch==="WhatsApp"?"Write: 1) Intro message, 2) Portfolio share, 3) Meeting request":"Write 3 message variations"}`).join("\n")}\n\nUse Kapturise pricing:\n${pBlock}\n${pNotes?`Special context: ${pNotes}`:""}`;
+      const prompt=`I already have prospects in ${pInd} in ${pLoc}. Now write a complete multi-channel outreach campaign for reaching ${pProf||"decision makers"} in this industry.\n\nGenerate outreach scripts for ALL of these channels:\n${pChannels.map(ch=>`\n═══ ${ch.toUpperCase()} ═══\n${ch==="Instagram"?"Write: 1) Profile warm-up plan (what to like/comment), 2) Opening DM, 3) Follow-up DM if no reply, 4) Voice note script":ch==="Email"?"Write: 1) Cold email #1 (subject + body), 2) Follow-up email #2, 3) Breakup email #3":ch==="Phone"?"Write: 1) Cold call script (2 min), 2) Voicemail script (30 sec), 3) Follow-up call script":ch==="LinkedIn"?"Write: 1) Connection request note, 2) Follow-up message after connect, 3) InMail if not connected":ch==="WhatsApp"?"Write: 1) Intro message, 2) Portfolio share, 3) Meeting request":"Write 3 message variations"}`).join("\n")}\n\nUse Kapturise pricing:\n${pBlock}\n${pNotes?`Special context: ${pNotes}`:""}`;
       run(prompt,`Outreach scripts: ${pChannels.join("+")} for ${pInd}`);
     };
 
     const roleTasks={
-      sales:[{l:"Ã°ÂÂÂ¤ Find Decision Makers",p:`For ${cfg.targeting.industries.join(", ")} in ${cfg.targeting.locations.join(", ")}: find ${cfg.targeting.professions?.join(", ")||"decision makers"}. Full name, title, company, email pattern, LinkedIn, approach.`},{l:"Ã°ÂÂÂ± Warm-Up Scripts",p:`Scripts for:\n${cfg.outreachSequence.filter(s=>s.day<=4).map(s=>`D${s.day}[${s.ch}]${s.act}`).join("\n")}\nPersonalized for ${cfg.targeting.industries.join("/")}.`},{l:"Ã¢ÂÂÃ¯Â¸Â Outreach Messages",p:`Messages:\n${cfg.outreachSequence.filter(s=>s.day>=5&&s.day<=12).map(s=>`D${s.day}[${s.ch}]${s.act}`).join("\n")}\nPricing:\n${pBlock}`},{l:"Ã°ÂÂÂ¸ 20 IG Comments",p:"20 genuine Instagram comments: 5 F&B, 5 Real Estate, 5 Events, 5 Lifestyle. Natural, no sales pitch."},{l:"Ã°ÂÂÂ¬ 10 DM Scripts",p:"10 Instagram DM scripts for different scenarios. F&B, Real Estate, Events, Corporates, Ecommerce. Under 3 sentences each. Casual Dubai tone."},{l:"Ã°ÂÂÂ¤ 5 Voice Notes",p:"5 Instagram voice note scripts: 15-20 sec each. Outreach, follow-up, interest received, tip sharing, re-engagement."},{l:"Ã°ÂÂÂ± Story Reply Scripts",p:"10 Story reply scripts by type: food post, property, event BTS, team photo, milestone."},{l:"Ã°ÂÂÂ Cold Call Scripts (5)",p:`5 cold call scripts for ${cfg.targeting.industries.join(", ")} targeting ${cfg.targeting.professions?.join(", ")||"decision makers"} in ${cfg.targeting.locations.join(", ")}. Under 2 min. Opening hook, qualify, CTA.`},{l:"Ã°ÂÂÂ Discovery Call Framework",p:"Full 15-20 min discovery call: rapport, SPIN questions, present services, pricing, objections, book next step."},{l:"Ã°ÂÂÂ¡Ã¯Â¸Â Objection Handling",p:"Handle every objection: too expensive, already have photographer, not right now, need boss approval, bad experience, iPhone photos fine, competitor cheaper."},{l:"Ã°ÂÂÂ± Voicemails + WhatsApp (10)",p:"5 voicemails under 30 sec. 5 WhatsApp messages (intro, portfolio, meeting confirm, reminder, follow-up)."},{l:"Ã°ÂÂÂ Proposal (3 Tiers)",p:`3 tiers:\n${pBlock}\nOne-off / Monthly / Full retainer. Include ROI.`},{l:"Ã°ÂÂÂ Daily Plan",p:`Checklist:\n${cfg.kpis.daily.map(k=>`${k.m}: target ${k.t}`).join("\n")}`},{l:"Ã°ÂÂÂ Weekly Plan",p:`Mon-Sun. Daily: ${cfg.kpis.daily.map(k=>`${k.m}(${k.t})`).join(",")} Weekly: ${cfg.kpis.weekly.map(k=>`${k.m}(${k.t})`).join(",")}`}],
-      marketing:[{l:"Ã°ÂÂÂ 2-Week Calendar",p:"2-week calendar for IG+FB+LI+TikTok+YouTube. 3/day. Platform, time, format, topic, caption, hashtags."},{l:"Ã°ÂÂÂ Today's 3 Posts",p:"3 posts: design brief, caption+hashtags, platform+time, format. Portfolio/educational/BTS."},{l:"Ã°ÂÂÂ¼ LinkedIn Post",p:"LinkedIn post: project showcase OR industry insight. Body, hashtags, best time, CTA."},{l:"Ã°ÂÂÂ¼ 5 LinkedIn Posts (week)",p:"5 LinkedIn posts: Mon news, Tue spotlight, Wed tip, Thu culture, Fri portfolio."},{l:"Ã°ÂÂÂ  5 Carousels",p:"5 carousels (5-8 slides). Content+visual per slide. IG+LI."},{l:"Ã°ÂÂÂ¬ 5 Reels/TikToks",p:"5 scripts: hook, scenes, overlays, music, CTA. IG+TikTok."},{l:"Ã°ÂÂÂ¥ 5 YouTube Ideas",p:"5 YouTube video ideas: SEO title, description, tags, thumbnail concept, target keywords."},{l:"Ã°ÂÂÂ YouTube Script",p:"Full 5-7 min YouTube script: hook (first 5 sec), 3-5 key points, B-roll suggestions, CTA. Dubai photography/videography niche."},{l:"Ã°ÂÂÂ¬ 5 YouTube Shorts",p:"5 YouTube Shorts scripts: under 60 sec, hook in first 2 sec, content, CTA. Cross-post to IG Reels + TikTok."},{l:"Ã°ÂÂÂ¼Ã¯Â¸Â 5 Thumbnails",p:"5 YouTube thumbnail concepts: text overlay, expression/pose, colors, why it gets clicks."},{l:"Ã°ÂÂÂ¨ 10 Nano Banana Prompts",p:"10 AI image prompts. Exact text, dimensions, style. Black+red, Dubai premium."},{l:"Ã°ÂÂÂ¢ Lead-Gen Campaign",p:`Campaign for ${cfg.targeting.locations.join(", ")}. Concept, audiences, ads, landing page, emails.`},{l:"Ã¢ÂÂÃ¯Â¸Â 15 Captions",p:"5 IG (casual), 5 FB (longer), 5 LI (professional)."},{l:"Ã°ÂÂÂ§ Email Campaign",p:"3-email sequence. Portfolio intro, case study, breakup. Subject lines + body."},{l:"Ã°ÂÂÂ§ Newsletter",p:"Featured project, tip, offer, CTA."},{l:"Ã°ÂÂÂ¯ 9 Ad Variations",p:"3 per platform (IG/FB/LI). Headlines, body, CTAs."},{l:"Ã°ÂÂÂ Weekly Report",p:`Report:\n${cfg.kpis.weekly.map(k=>`${k.m}: ${k.t}`).join("\n")}`},{l:"Ã°ÂÂÂ Daily Checklist",p:`Checklist:\n${cfg.kpis.daily.map(k=>`${k.m}: ${k.t}`).join("\n")}`}],
-      account:[{l:"Ã°ÂÂÂ Onboarding",p:"Welcome, kickoff, brief, timeline, WhatsApp, checklist."},{l:"Ã°ÂÂÂ¬ 5 Check-Ins",p:"Post-delivery, 2-week, monthly, quarterly, annual."},{l:"Ã°ÂÂÂ Upsell Playbook",p:"ServiceÃ¢ÂÂupsell maps, triggers, templates."},{l:"Ã°ÂÂÂ Retention",p:"Tiers, referrals, win-back sequences."},{l:"Ã¢ÂÂ Ã¯Â¸Â Issues",p:"Playbook for common problems."},{l:"Ã°ÂÂÂ Client Health",p:`Report:\n${cfg.kpis.monthly.map(k=>`${k.m}: ${k.t}`).join("\n")}`}],
-      analytics:[{l:"Ã°ÂÂÂ KPI Dashboard",p:"Revenue, pipeline, agents, content, retention."},{l:"Ã°ÂÂÂ Weekly Report",p:`Report:\n${cfg.kpis.weekly.map(k=>`${k.m}: ${k.t}`).join("\n")}`},{l:"Ã°ÂÂÂ Funnel Analysis",p:"Conversion rates per stage. Bottlenecks."},{l:"Ã°ÂÂÂ° Forecast",p:"Monthly forecast by service. Probability-weighted."},{l:"Ã°ÂÂÂ Channel ROI",p:"All channels. CPL, conversion, recommendations."}],
-      investor:[{l:"Ã°ÂÂÂ¯ 10 Investors",p:`In ${cfg.targeting.locations.join(", ")}. Fund, thesis, check size, approach.`},{l:"Ã°ÂÂÂ§ Email Sequence",p:"3 emails: intro, traction, meeting."},{l:"Ã°ÂÂÂ 1-Page Pitch",p:"Problem, solution, market, model, traction, ask."},{l:"Ã¢ÂÂ Q&A (20)",p:"20 investor questions answered."},{l:"Ã°ÂÂÂ Due Diligence",p:"Full checklist + templates."},{l:"Ã°ÂÂÂ Monthly Update",p:"KPIs, wins, challenges, asks."}],
+      sales:[{l:"👤 Find Decision Makers",p:`For ${cfg.targeting.industries.join(", ")} in ${cfg.targeting.locations.join(", ")}: find ${cfg.targeting.professions?.join(", ")||"decision makers"}. Full name, title, company, email pattern, LinkedIn, approach.`},{l:"📱 Warm-Up Scripts",p:`Scripts for:\n${cfg.outreachSequence.filter(s=>s.day<=4).map(s=>`D${s.day}[${s.ch}]${s.act}`).join("\n")}\nPersonalized for ${cfg.targeting.industries.join("/")}.`},{l:"✉️ Outreach Messages",p:`Messages:\n${cfg.outreachSequence.filter(s=>s.day>=5&&s.day<=12).map(s=>`D${s.day}[${s.ch}]${s.act}`).join("\n")}\nPricing:\n${pBlock}`},{l:"📸 20 IG Comments",p:"20 genuine Instagram comments: 5 F&B, 5 Real Estate, 5 Events, 5 Lifestyle. Natural, no sales pitch."},{l:"💬 10 DM Scripts",p:"10 Instagram DM scripts for different scenarios. F&B, Real Estate, Events, Corporates, Ecommerce. Under 3 sentences each. Casual Dubai tone."},{l:"🎤 5 Voice Notes",p:"5 Instagram voice note scripts: 15-20 sec each. Outreach, follow-up, interest received, tip sharing, re-engagement."},{l:"📱 Story Reply Scripts",p:"10 Story reply scripts by type: food post, property, event BTS, team photo, milestone."},{l:"📞 Cold Call Scripts (5)",p:`5 cold call scripts for ${cfg.targeting.industries.join(", ")} targeting ${cfg.targeting.professions?.join(", ")||"decision makers"} in ${cfg.targeting.locations.join(", ")}. Under 2 min. Opening hook, qualify, CTA.`},{l:"📞 Discovery Call Framework",p:"Full 15-20 min discovery call: rapport, SPIN questions, present services, pricing, objections, book next step."},{l:"🛡️ Objection Handling",p:"Handle every objection: too expensive, already have photographer, not right now, need boss approval, bad experience, iPhone photos fine, competitor cheaper."},{l:"📱 Voicemails + WhatsApp (10)",p:"5 voicemails under 30 sec. 5 WhatsApp messages (intro, portfolio, meeting confirm, reminder, follow-up)."},{l:"📄 Proposal (3 Tiers)",p:`3 tiers:\n${pBlock}\nOne-off / Monthly / Full retainer. Include ROI.`},{l:"📊 Daily Plan",p:`Checklist:\n${cfg.kpis.daily.map(k=>`${k.m}: target ${k.t}`).join("\n")}`},{l:"📅 Weekly Plan",p:`Mon-Sun. Daily: ${cfg.kpis.daily.map(k=>`${k.m}(${k.t})`).join(",")} Weekly: ${cfg.kpis.weekly.map(k=>`${k.m}(${k.t})`).join(",")}`}],
+      marketing:[{l:"📅 2-Week Calendar",p:"2-week calendar for IG+FB+LI+TikTok+YouTube. 3/day. Platform, time, format, topic, caption, hashtags."},{l:"📅 Today's 3 Posts",p:"3 posts: design brief, caption+hashtags, platform+time, format. Portfolio/educational/BTS."},{l:"💼 LinkedIn Post",p:"LinkedIn post: project showcase OR industry insight. Body, hashtags, best time, CTA."},{l:"💼 5 LinkedIn Posts (week)",p:"5 LinkedIn posts: Mon news, Tue spotlight, Wed tip, Thu culture, Fri portfolio."},{l:"🎠 5 Carousels",p:"5 carousels (5-8 slides). Content+visual per slide. IG+LI."},{l:"🎬 5 Reels/TikToks",p:"5 scripts: hook, scenes, overlays, music, CTA. IG+TikTok."},{l:"🎥 5 YouTube Ideas",p:"5 YouTube video ideas: SEO title, description, tags, thumbnail concept, target keywords."},{l:"📝 YouTube Script",p:"Full 5-7 min YouTube script: hook (first 5 sec), 3-5 key points, B-roll suggestions, CTA. Dubai photography/videography niche."},{l:"🎬 5 YouTube Shorts",p:"5 YouTube Shorts scripts: under 60 sec, hook in first 2 sec, content, CTA. Cross-post to IG Reels + TikTok."},{l:"🖼️ 5 Thumbnails",p:"5 YouTube thumbnail concepts: text overlay, expression/pose, colors, why it gets clicks."},{l:"🎨 10 Nano Banana Prompts",p:"10 AI image prompts. Exact text, dimensions, style. Black+red, Dubai premium."},{l:"📢 Lead-Gen Campaign",p:`Campaign for ${cfg.targeting.locations.join(", ")}. Concept, audiences, ads, landing page, emails.`},{l:"✍️ 15 Captions",p:"5 IG (casual), 5 FB (longer), 5 LI (professional)."},{l:"📧 Email Campaign",p:"3-email sequence. Portfolio intro, case study, breakup. Subject lines + body."},{l:"📧 Newsletter",p:"Featured project, tip, offer, CTA."},{l:"🎯 9 Ad Variations",p:"3 per platform (IG/FB/LI). Headlines, body, CTAs."},{l:"📊 Weekly Report",p:`Report:\n${cfg.kpis.weekly.map(k=>`${k.m}: ${k.t}`).join("\n")}`},{l:"📅 Daily Checklist",p:`Checklist:\n${cfg.kpis.daily.map(k=>`${k.m}: ${k.t}`).join("\n")}`}],
+      account:[{l:"🚀 Onboarding",p:"Welcome, kickoff, brief, timeline, WhatsApp, checklist."},{l:"💬 5 Check-Ins",p:"Post-delivery, 2-week, monthly, quarterly, annual."},{l:"📈 Upsell Playbook",p:"Service→upsell maps, triggers, templates."},{l:"🔒 Retention",p:"Tiers, referrals, win-back sequences."},{l:"⚠️ Issues",p:"Playbook for common problems."},{l:"📊 Client Health",p:`Report:\n${cfg.kpis.monthly.map(k=>`${k.m}: ${k.t}`).join("\n")}`}],
+      analytics:[{l:"📊 KPI Dashboard",p:"Revenue, pipeline, agents, content, retention."},{l:"📈 Weekly Report",p:`Report:\n${cfg.kpis.weekly.map(k=>`${k.m}: ${k.t}`).join("\n")}`},{l:"🔄 Funnel Analysis",p:"Conversion rates per stage. Bottlenecks."},{l:"💰 Forecast",p:"Monthly forecast by service. Probability-weighted."},{l:"📉 Channel ROI",p:"All channels. CPL, conversion, recommendations."}],
+      investor:[{l:"🎯 10 Investors",p:`In ${cfg.targeting.locations.join(", ")}. Fund, thesis, check size, approach.`},{l:"📧 Email Sequence",p:"3 emails: intro, traction, meeting."},{l:"📊 1-Page Pitch",p:"Problem, solution, market, model, traction, ask."},{l:"❓ Q&A (20)",p:"20 investor questions answered."},{l:"📋 Due Diligence",p:"Full checklist + templates."},{l:"📈 Monthly Update",p:"KPIs, wins, challenges, asks."}],
     };
     const tasks=roleTasks[agent.role]||roleTasks.sales;
     const stabs=[{id:"workflow",l:"Workflow"},{id:"sequence",l:"Outreach"},{id:"targeting",l:"Targeting"},{id:"kpis",l:"KPIs"},{id:"pipeline",l:"Pipeline"},{id:"pricing",l:"Pricing"}];
@@ -1525,7 +1609,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
         <Av a={agent} size={44} />
         <div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:16,fontWeight:700}}>{agent.name}</span><span style={bdg(c)}>{role.icon} {role.label}</span></div>
-          <div style={{fontSize:11,color:T.ts,marginTop:2}}>{agent.title} ÃÂ· {agent.bg}</div></div>
+          <div style={{fontSize:11,color:T.ts,marginTop:2}}>{agent.title} · {agent.bg}</div></div>
         <button onClick={()=>setAgents(p=>p.map(a=>a.id===agent.id?{...a,status:a.status==="active"?"paused":"active"}:a))} style={{...bdg(agent.status==="active"?T.em:T.am),cursor:"pointer",border:"none",background:`${agent.status==="active"?T.em:T.am}16`}}>
           <span style={dot(agent.status==="active"?T.em:T.am)} /> {agent.status==="active"?"Active":"Paused"}</button>
       </div>
@@ -1533,32 +1617,32 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         {stabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{background:"transparent",border:"none",borderBottom:tab===t.id?`2px solid ${c}`:"2px solid transparent",padding:"7px 12px",cursor:"pointer",fontSize:11.5,fontWeight:tab===t.id?600:400,color:tab===t.id?T.tx:T.ts,fontFamily:F.d,whiteSpace:"nowrap"}}>{t.l}</button>)}
       </div>
 
-      {/* Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ WORKFLOW Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
+      {/* ═══ WORKFLOW ═══ */}
       {tab==="workflow"&&<div>
         {/* 24/7 AUTO MODE WITH CALL HOURS */}
         <div style={{...cd,borderColor:agent.autoMode?T.em:T.bd,background:agent.autoMode?`${T.em}08`:T.cd}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <div style={{fontSize:13,fontWeight:700,color:agent.autoMode?T.em:T.tx}}>Ã°ÂÂ¤Â {agent.autoMode?"AUTO MODE Ã¢ÂÂ Running":"Auto Mode (Paused)"}</div>
+              <div style={{fontSize:13,fontWeight:700,color:agent.autoMode?T.em:T.tx}}>🤖 {agent.autoMode?"AUTO MODE — Running":"Auto Mode (Paused)"}</div>
               <div style={{fontSize:10.5,color:T.ts}}>Agent prospects, sends outreach, and schedules follow-ups continuously.</div>
             </div>
             <button style={agent.autoMode?bt(T.rs):bt(T.em)} onClick={()=>setAgents(p=>p.map(a=>a.id===agent.id?{...a,autoMode:!a.autoMode}:a))}>
-              {agent.autoMode?"Ã¢ÂÂ¸ Pause":"Ã¢ÂÂ¶ Start"}
+              {agent.autoMode?"⏸ Pause":"▶ Start"}
             </button>
           </div>
 
-          {/* Channel schedule Ã¢ÂÂ what runs 24/7 vs time-restricted */}
+          {/* Channel schedule — what runs 24/7 vs time-restricted */}
           <div style={{marginTop:10}}>
             <div style={{fontSize:10.5,fontWeight:600,color:T.ts,marginBottom:6}}>Channel Schedule:</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:6}}>
               <div style={{background:T.bg,borderRadius:6,padding:8,border:`1px solid ${T.bd}`}}>
-                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}><span style={{fontSize:12}}>Ã°ÂÂÂ¸</span><span style={{fontSize:11,fontWeight:600}}>Instagram/LinkedIn/Email</span></div>
-                <div style={{fontSize:10,color:T.em}}>Ã¢ÂÂ 24/7 Ã¢ÂÂ runs anytime</div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}><span style={{fontSize:12}}>📸</span><span style={{fontSize:11,fontWeight:600}}>Instagram/LinkedIn/Email</span></div>
+                <div style={{fontSize:10,color:T.em}}>✓ 24/7 — runs anytime</div>
                 <div style={{fontSize:9.5,color:T.td}}>DMs, comments, follows, emails send any hour</div>
               </div>
               <div style={{background:T.bg,borderRadius:6,padding:8,border:`1px solid ${T.bd}`}}>
-                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}><span style={{fontSize:12}}>Ã°ÂÂÂ</span><span style={{fontSize:11,fontWeight:600}}>Phone Calls</span></div>
-                <div style={{fontSize:10,color:T.am}}>Ã¢ÂÂ° Business hours only</div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}><span style={{fontSize:12}}>📞</span><span style={{fontSize:11,fontWeight:600}}>Phone Calls</span></div>
+                <div style={{fontSize:10,color:T.am}}>⏰ Business hours only</div>
                 <div style={{fontSize:9.5,color:T.td}}>Respects local timezone per region</div>
               </div>
             </div>
@@ -1566,7 +1650,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
 
           {/* Call hours by region */}
           {(agent.role==="sales")&&<div style={{marginTop:8}}>
-            <div style={{fontSize:10.5,fontWeight:600,color:T.ts,marginBottom:6}}>Ã°ÂÂÂ Call Hours by Region <span style={{fontWeight:400,color:T.td}}>(agent rotates regions as hours close)</span>:</div>
+            <div style={{fontSize:10.5,fontWeight:600,color:T.ts,marginBottom:6}}>📞 Call Hours by Region <span style={{fontWeight:400,color:T.td}}>(agent rotates regions as hours close)</span>:</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
               {(agent.callHours||[
                 {region:"UAE/Gulf",tz:"GST (UTC+4)",from:"09:00",to:"18:00"},
@@ -1575,10 +1659,10 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
                 {region:"US East",tz:"EST (UTC-5)",from:"09:00",to:"17:00"},
               ]).map((h,i)=><div key={i} style={{background:T.sa,borderRadius:5,padding:"5px 8px",border:`1px solid ${T.bd}`,fontSize:10}}>
                 <div style={{fontWeight:600}}>{h.region}</div>
-                <div style={{color:T.ts}}>{h.from}Ã¢ÂÂ{h.to} {h.tz}</div>
+                <div style={{color:T.ts}}>{h.from}–{h.to} {h.tz}</div>
               </div>)}
             </div>
-            <div style={{fontSize:9.5,color:T.td,marginTop:4}}>Agent calls UAE 9AM-6PM Ã¢ÂÂ when UAE closes, switches to UK/Europe Ã¢ÂÂ then US East. DMs/emails continue 24/7.</div>
+            <div style={{fontSize:9.5,color:T.td,marginTop:4}}>Agent calls UAE 9AM-6PM → when UAE closes, switches to UK/Europe → then US East. DMs/emails continue 24/7.</div>
             <button style={{...btG(T.ts),padding:"3px 8px",fontSize:9,marginTop:4}} onClick={()=>{
               const region=prompt("Add region (e.g. India, Australia):");
               const from=prompt("Start hour (e.g. 09:00):","09:00");
@@ -1590,34 +1674,34 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
 
           {agent.autoMode&&<div style={{marginTop:8,display:"flex",gap:6,alignItems:"center"}}>
             <span style={{...dot(T.em),animation:"pulse 1.5s infinite"}} />
-            <span style={{fontSize:11,color:T.em}}>Active Ã¢ÂÂ DMs/emails 24/7, calls during business hours. Vercel Cron after deployment.</span>
+            <span style={{fontSize:11,color:T.em}}>Active — DMs/emails 24/7, calls during business hours. Vercel Cron after deployment.</span>
           </div>}
         </div>
 
         {showProspect&&<div style={{...cd,borderColor:`${c}30`}}>
-          <div style={{fontSize:13,fontWeight:700,marginBottom:10,color:c}}>{isIG?"Ã°ÂÂÂ¯ Find & Reach Target Accounts":isInvestor?"Ã°ÂÂÂ° Find Investors":"Ã°ÂÂÂ Find Prospects & Generate Outreach"}</div>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:10,color:c}}>{isIG?"🎯 Find & Reach Target Accounts":isInvestor?"💰 Find Investors":"🔍 Find Prospects & Generate Outreach"}</div>
 
-          {/* WHERE TO LOOK Ã¢ÂÂ Source selector */}
+          {/* WHERE TO LOOK — Source selector */}
           <div style={{marginBottom:8}}>
-            <div style={{fontSize:10,color:T.td,marginBottom:5}}>Ã°ÂÂÂ Where should the agent look for prospects?</div>
+            <div style={{fontSize:10,color:T.td,marginBottom:5}}>🔎 Where should the agent look for prospects?</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-              {[{k:"instagram",l:"Ã°ÂÂÂ¸ Instagram",d:isInvestor?"Find investor personal brands & fund accounts":"Search by hashtags, location, similar accounts"},
-                {k:"linkedin",l:"Ã°ÂÂÂ¼ LinkedIn",d:isInvestor?"Search VCs, angels by fund, title, sector":"Search by company, title, industry"},
-                {k:"google",l:"Ã°ÂÂÂ Google",d:isInvestor?"Find funds investing in creative/media/SaaS":"Search businesses by keyword + location"},
-                {k:"website",l:"Ã°ÂÂÂ Website/URL",d:isInvestor?"Scrape an investor list or portfolio page":"Scrape a specific page for targets"},
-                {k:"directory",l:isInvestor?"Ã°ÂÂÂ Investor Directories":"Ã°ÂÂÂ Business Directory",d:isInvestor?"Crunchbase, AngelList, MAGNiTT, Hub71":"Dubai Chamber, DED, Yellow Pages"},
-                {k:"event",l:"Ã°ÂÂÂª Event/Conference",d:isInvestor?"Find investor speakers, sponsors, attendees":"Find exhibitors from an event page"}].map(src=>{
+              {[{k:"instagram",l:"📸 Instagram",d:isInvestor?"Find investor personal brands & fund accounts":"Search by hashtags, location, similar accounts"},
+                {k:"linkedin",l:"💼 LinkedIn",d:isInvestor?"Search VCs, angels by fund, title, sector":"Search by company, title, industry"},
+                {k:"google",l:"🔍 Google",d:isInvestor?"Find funds investing in creative/media/SaaS":"Search businesses by keyword + location"},
+                {k:"website",l:"🌐 Website/URL",d:isInvestor?"Scrape an investor list or portfolio page":"Scrape a specific page for targets"},
+                {k:"directory",l:isInvestor?"📂 Investor Directories":"📂 Business Directory",d:isInvestor?"Crunchbase, AngelList, MAGNiTT, Hub71":"Dubai Chamber, DED, Yellow Pages"},
+                {k:"event",l:"🎪 Event/Conference",d:isInvestor?"Find investor speakers, sponsors, attendees":"Find exhibitors from an event page"}].map(src=>{
                 const sel=pSource===src.k;
                 return <button key={src.k} onClick={()=>setPSource(src.k)} style={{background:sel?`${T.sk}20`:T.sa,border:`1px solid ${sel?T.sk:T.bd}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:10.5,color:sel?T.sk:T.td,fontFamily:F.d,fontWeight:sel?600:400,textAlign:"left"}}>
-                  <div>{src.l}{sel&&" Ã¢ÂÂ"}</div>
+                  <div>{src.l}{sel&&" ✓"}</div>
                   <div style={{fontSize:9,color:T.td,marginTop:1}}>{src.d}</div>
                 </button>;})}
             </div>
           </div>
 
-          {/* URL field Ã¢ÂÂ shown for website/event/directory */}
+          {/* URL field — shown for website/event/directory */}
           {(pSource==="website"||pSource==="event"||pSource==="directory")&&<div style={{marginBottom:8}}>
-            <div style={{fontSize:10,color:T.td,marginBottom:3}}>Ã°ÂÂÂ URL to scrape</div>
+            <div style={{fontSize:10,color:T.td,marginBottom:3}}>🔗 URL to scrape</div>
             <input style={ip} placeholder={pSource==="event"?"e.g. https://gitex.com/exhibitors":pSource==="directory"?"e.g. https://dubaichamber.com/directory":"Any website URL with target companies"} value={pUrl} onChange={e=>setPUrl(e.target.value)} />
           </div>}
 
@@ -1632,12 +1716,12 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
 
           {/* Multi-channel outreach toggles */}
           <div style={{marginBottom:10}}>
-            <div style={{fontSize:10,color:T.td,marginBottom:5}}>Ã°ÂÂÂ£ Outreach Channels Ã¢ÂÂ generate scripts for:</div>
+            <div style={{fontSize:10,color:T.td,marginBottom:5}}>📣 Outreach Channels — generate scripts for:</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-              {[{ch:"Instagram",icon:"Ã°ÂÂÂ¸",cl:T.pk},{ch:"Email",icon:"Ã¢ÂÂÃ¯Â¸Â",cl:T.br},{ch:"Phone",icon:"Ã°ÂÂÂ",cl:T.am},{ch:"LinkedIn",icon:"Ã°ÂÂÂ¼",cl:T.sk},{ch:"WhatsApp",icon:"Ã°ÂÂÂ¬",cl:T.em}].map(({ch,icon,cl})=>{
+              {[{ch:"Instagram",icon:"📸",cl:T.pk},{ch:"Email",icon:"✉️",cl:T.br},{ch:"Phone",icon:"📞",cl:T.am},{ch:"LinkedIn",icon:"💼",cl:T.sk},{ch:"WhatsApp",icon:"💬",cl:T.em}].map(({ch,icon,cl})=>{
                 const sel=pChannels.includes(ch);
                 return <button key={ch} onClick={()=>toggleCh(ch)} style={{background:sel?`${cl}20`:T.sa,border:`1px solid ${sel?cl:T.bd}`,borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:11,color:sel?cl:T.td,fontFamily:F.d,fontWeight:sel?600:400,display:"flex",alignItems:"center",gap:4}}>
-                  {icon} {ch} {sel&&"Ã¢ÂÂ"}
+                  {icon} {ch} {sel&&"✓"}
                 </button>;
               })}
             </div>
@@ -1646,15 +1730,15 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
           {/* Action buttons */}
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             <button className="kap-btn" style={bt(c)} onClick={runProspect} disabled={loading}>
-              {loading?"Ã¢ÂÂ³ Working...":`Ã°ÂÂÂ Find ${pCount} via ${pSource==="instagram"?"Instagram":pSource==="linkedin"?"LinkedIn":pSource==="google"?"Google":pSource==="website"?"URL":pSource==="directory"?"Directory":"Event"}`}
+              {loading?"⏳ Working...":`🔍 Find ${pCount} via ${pSource==="instagram"?"Instagram":pSource==="linkedin"?"LinkedIn":pSource==="google"?"Google":pSource==="website"?"URL":pSource==="directory"?"Directory":"Event"}`}
             </button>
             <button className="kap-btn" style={btG(c)} onClick={runOutreach} disabled={loading}>
-              Ã°ÂÂÂ Outreach Only ({pChannels.join(", ")})
+              📝 Outreach Only ({pChannels.join(", ")})
             </button>
           </div>
         </div>}
-        {loading&&<div style={{...cd,borderColor:`${c}30`}}><span style={{fontSize:12,color:T.ts}}>Ã¢ÂÂ³ Working...</span></div>}
-        {result&&<div ref={ref} style={{...cd,borderColor:`${c}20`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{display:"flex",alignItems:"center",gap:6}}><Av a={agent} size={22} /><span style={{fontSize:12,fontWeight:600}}>Output</span></div><button style={btG(c)} onClick={()=>navigator.clipboard?.writeText(result)}>Copy</button><button style={{...btG(c),marginLeft:4}} onClick={()=>speakText(result,agent.id)}>Ã°ÂÂÂ Play</button><button onClick={()=>{
+        {loading&&<div style={{...cd,borderColor:`${c}30`}}><span style={{fontSize:12,color:T.ts}}>⏳ Working...</span></div>}
+        {result&&<div ref={ref} style={{...cd,borderColor:`${c}20`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{display:"flex",alignItems:"center",gap:6}}><Av a={agent} size={22} /><span style={{fontSize:12,fontWeight:600}}>Output</span></div><button style={btG(c)} onClick={()=>navigator.clipboard?.writeText(result)}>Copy</button><button style={{...btG(c),marginLeft:4}} onClick={()=>speakText(result,agent.id)}>🔊 Play</button><button onClick={()=>{
   const r=_AR[agent.id+"_result"]||result;
   if(!r){alert("No output to send. Run a task first.");return;}
   const emailMatch=r.match(/[\w.-]+@[\w.-]+\.[a-z]{2,}/i);
@@ -1668,15 +1752,15 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
             onMouseOver={e=>{e.currentTarget.style.borderColor=c;e.currentTarget.style.background=`${c}10`;}} onMouseOut={e=>{e.currentTarget.style.borderColor=T.bd;e.currentTarget.style.background=T.sa;}}>{t.l}</button>)}
         </div></div>
 
-        {/* Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ MY SCRIPTS Ã¢ÂÂ assigned to this agent Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
+        {/* ═══ MY SCRIPTS — assigned to this agent ═══ */}
         {(()=>{
           const myScripts=Object.values(scripts||{}).flat().filter(sc=>(sc.assignedAgents||[]).includes(agent.id));
           if(myScripts.length===0)return null;
           const byChannel={};myScripts.forEach(sc=>{const ch=sc.channel||"other";if(!byChannel[ch])byChannel[ch]=[];byChannel[ch].push(sc);});
-          const chLabel={email:"Ã°ÂÂÂ§ Email Scripts",phone:"Ã°ÂÂÂ Call Scripts",instagram:"Ã°ÂÂÂ¸ DM Templates",linkedin:"Ã°ÂÂÂ¼ LinkedIn"};
+          const chLabel={email:"📧 Email Scripts",phone:"📞 Call Scripts",instagram:"📸 DM Templates",linkedin:"💼 LinkedIn"};
           const chColor={email:T.br,phone:T.am,instagram:T.pk,linkedin:T.sk};
           return <div style={cd}>
-            <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>Ã°ÂÂÂ My Assigned Scripts ({myScripts.length})</div>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>📝 My Assigned Scripts ({myScripts.length})</div>
             {Object.entries(byChannel).map(([ch,scs])=><div key={ch} style={{marginBottom:8}}>
               <div style={{fontSize:11,fontWeight:600,color:chColor[ch]||T.ts,marginBottom:5}}>{chLabel[ch]||ch}</div>
               {scs.map(sc=><div key={sc.id} style={{background:T.sa,borderRadius:6,padding:10,marginBottom:4,border:`1px solid ${T.bd}`,cursor:"pointer"}}
@@ -1693,24 +1777,24 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
 
         <div style={cd}><div style={{display:"flex",gap:7}}><input style={{...ip,flex:1}} placeholder={`Custom task...`} value={custom} onChange={e=>setCustom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doC()} disabled={loading} /><button style={bt(c)} onClick={doC} disabled={loading}>Run</button></div></div>
 
-        {/* Ã°ÂÂÂ¨ Nano Banana Image Generation */}
+        {/* 🎨 Nano Banana Image Generation */}
         {agent.role==="marketing"&&<ImageGen T={T} cd={cd} ip={ip} bt={bt} btG={btG} bdg={bdg} generateImage={generateImage} apiKeys={apiKeys} agent={agent} addLog={addLog} />}
 
-        {/* Ã°ÂÂÂ Bland.ai Call Panel */}
+        {/* 📞 Bland.ai Call Panel */}
         {agent.role==="sales"&&<CallPanel T={T} cd={cd} ip={ip} bt={bt} btG={btG} bdg={bdg} makeCall={makeCall} apiKeys={apiKeys} agent={agent} addLog={addLog} leads={leads} />}
 
-        {/* Ã°ÂÂÂ¬ WhatsApp Business Panel */}
+        {/* 💬 WhatsApp Business Panel */}
         {agent.role==="sales"&&<div style={cd}>
-          <div style={{fontSize:12.5,fontWeight:600,marginBottom:8}}>Ã°ÂÂÂ¬ WhatsApp Business</div>
+          <div style={{fontSize:12.5,fontWeight:600,marginBottom:8}}>💬 WhatsApp Business</div>
           <div style={{fontSize:10.5,color:T.ts,marginBottom:8}}>Send messages via WhatsApp Business API. Messages are logged to CRM automatically.</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
             <input style={ip} placeholder="WhatsApp number (+971...)" id={`wa-num-${agent.id}`} />
             <select style={ip} id={`wa-tpl-${agent.id}`}>
-              <option value="intro">Ã°ÂÂÂ Intro Message</option>
-              <option value="portfolio">Ã°ÂÂÂ¸ Portfolio Share</option>
-              <option value="followup">Ã°ÂÂÂ Follow-Up</option>
-              <option value="meeting">Ã°ÂÂÂ Meeting Request</option>
-              <option value="custom">Ã¢ÂÂÃ¯Â¸Â Custom Message</option>
+              <option value="intro">👋 Intro Message</option>
+              <option value="portfolio">📸 Portfolio Share</option>
+              <option value="followup">🔄 Follow-Up</option>
+              <option value="meeting">📅 Meeting Request</option>
+              <option value="custom">✏️ Custom Message</option>
             </select>
           </div>
           <textarea style={{...ip,minHeight:50,resize:"vertical",marginBottom:6}} placeholder="Message (or select template above)" id={`wa-msg-${agent.id}`} />
@@ -1725,7 +1809,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
                 window.open(`https://wa.me/${num.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(msg)}`,"_blank");
               }
               addLog(agent.id,`${agent.name}: WhatsApp to ${num}`);
-            }}>Ã°ÂÂÂ¬ Send WhatsApp</button>
+            }}>💬 Send WhatsApp</button>
             <button style={btG(T.ts)} onClick={()=>{
               const num=document.getElementById(`wa-num-${agent.id}`)?.value;
               if(num)window.open(`https://wa.me/${num.replace(/[^0-9]/g,"")}`,"_blank");
@@ -1736,14 +1820,14 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         
       </div>}
 
-      {/* Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ OUTREACH Ã¢ÂÂ editable Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
+      {/* ═══ OUTREACH — editable ═══ */}
       {tab==="sequence"&&<div style={cd}>
-        <div style={{fontSize:12.5,fontWeight:600,marginBottom:10}}>Outreach Sequence <span style={{fontWeight:400,color:T.td}}>Ã¢ÂÂ click ÃÂ to remove, add below</span></div>
+        <div style={{fontSize:12.5,fontWeight:600,marginBottom:10}}>Outreach Sequence <span style={{fontWeight:400,color:T.td}}>— click × to remove, add below</span></div>
         {cfg.outreachSequence.map((s,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:4}}>
           <div style={{width:26,height:26,borderRadius:"50%",background:`${chC[s.ch]||T.ts}20`,border:`2px solid ${chC[s.ch]||T.ts}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:chC[s.ch]||T.ts,flexShrink:0}}>{s.day}</div>
           <span style={bdg(chC[s.ch]||T.ts)}>{s.ch}</span>
           <span style={{fontSize:12,color:T.tx,flex:1}}>{s.act}</span>
-          <button onClick={()=>updateCfg(c=>({...c,outreachSequence:c.outreachSequence.filter((_,j)=>j!==i)}))} style={{background:"transparent",border:"none",color:T.rs,cursor:"pointer",fontSize:14}}>ÃÂ</button>
+          <button onClick={()=>updateCfg(c=>({...c,outreachSequence:c.outreachSequence.filter((_,j)=>j!==i)}))} style={{background:"transparent",border:"none",color:T.rs,cursor:"pointer",fontSize:14}}>×</button>
         </div>)}
         <div style={{display:"flex",gap:6,marginTop:10}}>
           <input style={{...ip,width:50}} placeholder="Day" type="number" value={newStep.day} onChange={e=>setNewStep({...newStep,day:e.target.value})} />
@@ -1753,10 +1837,10 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         </div>
       </div>}
 
-      {/* Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ TARGETING Ã¢ÂÂ editable Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
+      {/* ═══ TARGETING — editable ═══ */}
       {tab==="targeting"&&<TargetingEditor agent={agent} agents={agents} setAgents={setAgents} T={T} cd={cd} ip={ip} bt={bt} btG={btG} bdg={bdg} c={c} />}
 
-      {/* Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ KPIs Ã¢ÂÂ editable Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
+      {/* ═══ KPIs — editable ═══ */}
       {tab==="kpis"&&<div>
         <div style={{fontSize:11,color:T.td,marginBottom:10}}>Click any target number to edit. Press Enter or click outside to save.</div>
         {[{p:"Daily",k:"daily",clr:T.br},{p:"Weekly",k:"weekly",clr:T.vi},{p:"Monthly",k:"monthly",clr:T.em}].map(g=><div key={g.p} style={cd}>
@@ -1779,14 +1863,14 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         </div>)}
       </div>}
 
-      {/* Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ PIPELINE Ã¢ÂÂ editable Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
+      {/* ═══ PIPELINE — editable ═══ */}
       {tab==="pipeline"&&<div style={cd}>
-        <div style={{fontSize:12.5,fontWeight:600,marginBottom:10}}>Pipeline <span style={{fontWeight:400,color:T.td}}>Ã¢ÂÂ ÃÂ to remove, add below</span></div>
+        <div style={{fontSize:12.5,fontWeight:600,marginBottom:10}}>Pipeline <span style={{fontWeight:400,color:T.td}}>— × to remove, add below</span></div>
         {cfg.pipeline.map((p,i)=>{const sl=leads.filter(l=>l.assignedTo===agent.id&&l.stage===p.stage);return <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:4}}>
           <div style={{width:22,height:22,borderRadius:"50%",background:`${c}20`,border:`2px solid ${c}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:c,flexShrink:0,marginTop:2}}>{i+1}</div>
           <div style={{flex:1}}><div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:12,fontWeight:600}}>{p.stage}</span>{sl.length>0&&<span style={bdg(T.am)}>{sl.length}</span>}</div><div style={{fontSize:11,color:T.ts}}>{p.d}</div>
-            {sl.map(l=><div key={l.id} style={{background:T.sa,borderRadius:5,padding:"3px 8px",marginTop:3,fontSize:11}}><b>{l.name}</b> ÃÂ· <span style={{color:T.em,fontFamily:F.m}}>{l.val?.toLocaleString()} AED</span></div>)}</div>
-          <button onClick={()=>updateCfg(c=>({...c,pipeline:c.pipeline.filter((_,j)=>j!==i)}))} style={{background:"transparent",border:"none",color:T.rs,cursor:"pointer",fontSize:14}}>ÃÂ</button>
+            {sl.map(l=><div key={l.id} style={{background:T.sa,borderRadius:5,padding:"3px 8px",marginTop:3,fontSize:11}}><b>{l.name}</b> · <span style={{color:T.em,fontFamily:F.m}}>{l.val?.toLocaleString()} AED</span></div>)}</div>
+          <button onClick={()=>updateCfg(c=>({...c,pipeline:c.pipeline.filter((_,j)=>j!==i)}))} style={{background:"transparent",border:"none",color:T.rs,cursor:"pointer",fontSize:14}}>×</button>
         </div>;})}
         <div style={{display:"flex",gap:6,marginTop:10}}>
           <input id="ns" style={{...ip,flex:1}} placeholder="Stage name" />
@@ -1795,26 +1879,26 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         </div>
       </div>}
 
-      {/* Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ PRICING Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
+      {/* ═══ PRICING ═══ */}
       {tab==="pricing"&&<div>{pricing.map(p=><div key={p.id} style={cd}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{fontSize:18}}>{p.icon}</span><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700}}>{p.name}</div></div><span style={bdg(T.em)}>{p.base.toLocaleString()} {p.unit}</span></div>
         <div style={{fontSize:10.5,color:T.td,marginBottom:4}}>Includes: {p.includes.map(i=>`${i.base} ${i.l}`).join(", ")}</div>
-        <div style={{fontSize:10.5,color:T.td}}>Add-ons: {p.addons.map(a=>`${a.l} +${a.perUnit}AED`).join(" ÃÂ· ")}</div>
+        <div style={{fontSize:10.5,color:T.td}}>Add-ons: {p.addons.map(a=>`${a.l} +${a.perUnit}AED`).join(" · ")}</div>
         <PricingCalc svc={p} />
       </div>)}</div>}
     </div>;
   }
 
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ PRICING PAGE (edit/add) Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ PRICING PAGE (edit/add) ═══
   function PricingPage(){
     const[editing,setEditing]=useState(null);
     const[adding,setAdding]=useState(false);
-    const[np,setNp]=useState({name:"",icon:"Ã°ÂÂÂ¦",base:0,unit:"AED",baseHours:0,note:"",includes:[],addons:[]});
+    const[np,setNp]=useState({name:"",icon:"📦",base:0,unit:"AED",baseHours:0,note:"",includes:[],addons:[]});
     const[ni,setNi]=useState({k:"",l:"",base:0});
     const[na,setNa]=useState({k:"",l:"",perUnit:0});
 
-    const addService=()=>{if(!np.name)return;setPricing(p=>[...p,{...np,id:np.name.toLowerCase().replace(/\s/g,"-")}]);setNp({name:"",icon:"Ã°ÂÂÂ¦",base:0,unit:"AED",baseHours:0,note:"",includes:[],addons:[]});setAdding(false);};
+    const addService=()=>{if(!np.name)return;setPricing(p=>[...p,{...np,id:np.name.toLowerCase().replace(/\s/g,"-")}]);setNp({name:"",icon:"📦",base:0,unit:"AED",baseHours:0,note:"",includes:[],addons:[]});setAdding(false);};
     const upd=(id,field,val)=>setPricing(p=>p.map(s=>s.id===id?{...s,[field]:val}:s));
     const updInc=(id,idx,field,val)=>setPricing(p=>p.map(s=>s.id===id?{...s,includes:s.includes.map((inc,i)=>i===idx?{...inc,[field]:val}:inc)}:s));
     const updAddon=(id,idx,field,val)=>setPricing(p=>p.map(s=>s.id===id?{...s,addons:s.addons.map((ao,i)=>i===idx?{...ao,[field]:val}:ao)}:s));
@@ -1870,7 +1954,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
               <input style={{...ip,width:70}} value={p.unit} onChange={e=>upd(p.id,"unit",e.target.value)} /></>
             :<span style={{fontSize:20,fontWeight:800,color:T.em}}>{p.base.toLocaleString()} <span style={{fontSize:11,fontWeight:500,color:T.td}}>{p.unit}</span></span>}
             <button style={btG(isEd?T.em:T.ts)} onClick={()=>setEditing(isEd?null:p.id)}>{isEd?"Done":"Edit"}</button>
-            <button style={btG(T.rs)} onClick={()=>deleteService(p.id)}>ÃÂ</button>
+            <button style={btG(T.rs)} onClick={()=>deleteService(p.id)}>×</button>
           </div>
         </div>
 
@@ -1880,14 +1964,14 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
           <input style={{...ip,width:60}} type="number" value={p.baseHours||0} onChange={e=>upd(p.id,"baseHours",parseInt(e.target.value)||0)} />
         </div>}
 
-        {/* Includes Ã¢ÂÂ fully editable */}
+        {/* Includes — fully editable */}
         <div style={{marginBottom:8}}>
-          <div style={{fontSize:11,fontWeight:600,color:T.ts,marginBottom:4}}>Includes:{!isEd&&` ${p.includes.map(i=>`${i.base} ${i.l}`).join(", ")}${p.baseHours?` ÃÂ· ${p.baseHours} hours`:""}`}</div>
+          <div style={{fontSize:11,fontWeight:600,color:T.ts,marginBottom:4}}>Includes:{!isEd&&` ${p.includes.map(i=>`${i.base} ${i.l}`).join(", ")}${p.baseHours?` · ${p.baseHours} hours`:""}`}</div>
           {isEd&&<div>
             {p.includes.map((inc,i)=><div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
               <input style={{...ip,width:60}} type="number" value={inc.base} onChange={e=>updInc(p.id,i,"base",parseInt(e.target.value)||0)} />
               <input style={{...ip,flex:1}} value={inc.l} onChange={e=>updInc(p.id,i,"l",e.target.value)} />
-              <button onClick={()=>rmInc(p.id,i)} style={{background:"transparent",border:"none",color:T.rs,cursor:"pointer",fontSize:14}}>ÃÂ</button>
+              <button onClick={()=>rmInc(p.id,i)} style={{background:"transparent",border:"none",color:T.rs,cursor:"pointer",fontSize:14}}>×</button>
             </div>)}
             <div style={{display:"flex",gap:6}}>
               <input id={`ni-l-${p.id}`} style={{...ip,flex:1}} placeholder="New include (e.g. Photos)" />
@@ -1897,14 +1981,14 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
           </div>}
         </div>
 
-        {/* Add-ons Ã¢ÂÂ fully editable */}
+        {/* Add-ons — fully editable */}
         <div style={{marginBottom:8}}>
-          <div style={{fontSize:11,fontWeight:600,color:T.td,marginBottom:4}}>Add-ons:{!isEd&&` ${p.addons.map(a=>`${a.l} +${a.perUnit}AED`).join(" ÃÂ· ")}`}</div>
+          <div style={{fontSize:11,fontWeight:600,color:T.td,marginBottom:4}}>Add-ons:{!isEd&&` ${p.addons.map(a=>`${a.l} +${a.perUnit}AED`).join(" · ")}`}</div>
           {isEd&&<div>
             {p.addons.map((ao,i)=><div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
               <input style={{...ip,flex:1}} value={ao.l} onChange={e=>updAddon(p.id,i,"l",e.target.value)} />
               <div style={{display:"flex",alignItems:"center",gap:2}}><span style={{fontSize:11,color:T.td}}>+</span><input style={{...ip,width:70}} type="number" value={ao.perUnit} onChange={e=>updAddon(p.id,i,"perUnit",parseInt(e.target.value)||0)} /><span style={{fontSize:11,color:T.td}}>AED</span></div>
-              <button onClick={()=>rmAddon(p.id,i)} style={{background:"transparent",border:"none",color:T.rs,cursor:"pointer",fontSize:14}}>ÃÂ</button>
+              <button onClick={()=>rmAddon(p.id,i)} style={{background:"transparent",border:"none",color:T.rs,cursor:"pointer",fontSize:14}}>×</button>
             </div>)}
             <div style={{display:"flex",gap:6}}>
               <input id={`na-l-${p.id}`} style={{...ip,flex:1}} placeholder="New add-on (e.g. Extra Video)" />
@@ -1919,7 +2003,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ CAMPAIGNS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ CAMPAIGNS ═══
   function CampaignsPage(){
     const[showNew,setShowNew]=useState(false);
     const[nc,setNc]=useState({name:"",url:"",specialOffer:"",customPricing:"",assignedAgents:[],serviceType:"event",dmScript:"",emailScript:"",callScript:"",contentBrief:""});
@@ -1960,7 +2044,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         <input style={{...ip,marginBottom:8}} placeholder="Campaign Name (e.g. GITEX 2026 Exhibitor Outreach)" value={nc.name} onChange={e=>setNc({...nc,name:e.target.value})} />
         <div style={{display:"flex",gap:7,marginBottom:8}}>
           <input style={{...ip,flex:1}} placeholder="Event/Target URL to scrape" value={nc.url} onChange={e=>setNc({...nc,url:e.target.value})} />
-          <button style={bt(T.vi)} onClick={scrapeURL} disabled={scraping}>{scraping?"Ã¢ÂÂ³ Scraping...":"Ã°ÂÂÂ Scrape URL"}</button>
+          <button style={bt(T.vi)} onClick={scrapeURL} disabled={scraping}>{scraping?"⏳ Scraping...":"🔍 Scrape URL"}</button>
         </div>
         {scrapeResult&&<div style={{background:T.sa,borderRadius:7,padding:10,marginBottom:8,maxHeight:200,overflow:"auto",fontSize:12,color:T.ts,whiteSpace:"pre-wrap"}}>{scrapeResult}</div>}
 
@@ -1975,15 +2059,15 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         {/* Custom pricing */}
         <div style={{marginBottom:10}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-            <div style={{fontSize:11,fontWeight:600,color:T.ts}}>Ã°ÂÂÂ² Custom Campaign Pricing</div>
-            <button style={{...btG(T.am),padding:"3px 10px",fontSize:10}} onClick={()=>generateField("customPricing",`Create special pricing for a "${nc.name||"campaign"}" targeting ${nc.serviceType} service. Base on Kapturise pricing but with "${nc.specialOffer||"special event discount"}". Format as a clear price list with line items.`)} disabled={genLoading==="customPricing"}>{genLoading==="customPricing"?"Ã¢ÂÂ³":"Ã°ÂÂ¤Â AI Generate"}</button>
+            <div style={{fontSize:11,fontWeight:600,color:T.ts}}>💲 Custom Campaign Pricing</div>
+            <button style={{...btG(T.am),padding:"3px 10px",fontSize:10}} onClick={()=>generateField("customPricing",`Create special pricing for a "${nc.name||"campaign"}" targeting ${nc.serviceType} service. Base on Kapturise pricing but with "${nc.specialOffer||"special event discount"}". Format as a clear price list with line items.`)} disabled={genLoading==="customPricing"}>{genLoading==="customPricing"?"⏳":"🤖 AI Generate"}</button>
           </div>
           <textarea style={{...ip,minHeight:50,resize:"vertical"}} placeholder="Custom pricing for this campaign (or click AI Generate)" value={nc.customPricing} onChange={e=>setNc({...nc,customPricing:e.target.value})} />
         </div>
 
         {/* Assign agents from ANY team */}
         <div style={{marginBottom:10}}>
-          <div style={{fontSize:11,fontWeight:600,color:T.ts,marginBottom:6}}>Ã°ÂÂÂ¥ Assign Agents (from any team)</div>
+          <div style={{fontSize:11,fontWeight:600,color:T.ts,marginBottom:6}}>👥 Assign Agents (from any team)</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
             {agents.map(a=>{const sel=nc.assignedAgents.includes(a.id);const ac=rc(a.role);
               return <button key={a.id} onClick={()=>toggleAgent(a.id)} style={{background:sel?`${ac}20`:T.sa,border:`1px solid ${sel?ac:T.bd}`,borderRadius:6,padding:"5px 10px",cursor:"pointer",fontSize:11,color:sel?ac:T.ts,fontFamily:F.d,fontWeight:sel?600:400,display:"flex",alignItems:"center",gap:4}}>
@@ -1994,36 +2078,36 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         </div>
 
         {/* Campaign scripts per channel */}
-        <div style={{fontSize:11,fontWeight:600,color:T.ts,marginBottom:6}}>Ã°ÂÂÂ Campaign-Specific Scripts (agents use these for this campaign)</div>
+        <div style={{fontSize:11,fontWeight:600,color:T.ts,marginBottom:6}}>📝 Campaign-Specific Scripts (agents use these for this campaign)</div>
 
         <div style={{marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-            <span style={{fontSize:10.5,color:T.pk}}>Ã°ÂÂÂ¸ Instagram DM Script</span>
-            <button style={{...btG(T.pk),padding:"2px 8px",fontSize:9}} onClick={()=>generateField("dmScript",`Write an Instagram DM outreach script for Kapturise's "${nc.name}" campaign. Mention: "${nc.specialOffer}". Target: exhibitors/attendees. Under 3 sentences. Casual, Dubai-friendly.`)} disabled={genLoading==="dmScript"}>{genLoading==="dmScript"?"Ã¢ÂÂ³":"Ã°ÂÂ¤Â Generate"}</button>
+            <span style={{fontSize:10.5,color:T.pk}}>📸 Instagram DM Script</span>
+            <button style={{...btG(T.pk),padding:"2px 8px",fontSize:9}} onClick={()=>generateField("dmScript",`Write an Instagram DM outreach script for Kapturise's "${nc.name}" campaign. Mention: "${nc.specialOffer}". Target: exhibitors/attendees. Under 3 sentences. Casual, Dubai-friendly.`)} disabled={genLoading==="dmScript"}>{genLoading==="dmScript"?"⏳":"🤖 Generate"}</button>
           </div>
           <textarea style={{...ip,minHeight:40,resize:"vertical"}} placeholder="Custom Instagram DM for this campaign..." value={nc.dmScript} onChange={e=>setNc({...nc,dmScript:e.target.value})} />
         </div>
 
         <div style={{marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-            <span style={{fontSize:10.5,color:T.br}}>Ã¢ÂÂÃ¯Â¸Â Email Script</span>
-            <button style={{...btG(T.br),padding:"2px 8px",fontSize:9}} onClick={()=>generateField("emailScript",`Write a cold email for Kapturise's "${nc.name}" campaign. Subject line + body. Mention: "${nc.specialOffer}". Professional. Include Kapturise portfolio CTA.`)} disabled={genLoading==="emailScript"}>{genLoading==="emailScript"?"Ã¢ÂÂ³":"Ã°ÂÂ¤Â Generate"}</button>
+            <span style={{fontSize:10.5,color:T.br}}>✉️ Email Script</span>
+            <button style={{...btG(T.br),padding:"2px 8px",fontSize:9}} onClick={()=>generateField("emailScript",`Write a cold email for Kapturise's "${nc.name}" campaign. Subject line + body. Mention: "${nc.specialOffer}". Professional. Include Kapturise portfolio CTA.`)} disabled={genLoading==="emailScript"}>{genLoading==="emailScript"?"⏳":"🤖 Generate"}</button>
           </div>
           <textarea style={{...ip,minHeight:40,resize:"vertical"}} placeholder="Custom email for this campaign..." value={nc.emailScript} onChange={e=>setNc({...nc,emailScript:e.target.value})} />
         </div>
 
         <div style={{marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-            <span style={{fontSize:10.5,color:T.am}}>Ã°ÂÂÂ Call Script</span>
-            <button style={{...btG(T.am),padding:"2px 8px",fontSize:9}} onClick={()=>generateField("callScript",`Write a cold call script for Kapturise's "${nc.name}" campaign. 2 min max. Reference the event. Mention: "${nc.specialOffer}". Opening + qualify + CTA.`)} disabled={genLoading==="callScript"}>{genLoading==="callScript"?"Ã¢ÂÂ³":"Ã°ÂÂ¤Â Generate"}</button>
+            <span style={{fontSize:10.5,color:T.am}}>📞 Call Script</span>
+            <button style={{...btG(T.am),padding:"2px 8px",fontSize:9}} onClick={()=>generateField("callScript",`Write a cold call script for Kapturise's "${nc.name}" campaign. 2 min max. Reference the event. Mention: "${nc.specialOffer}". Opening + qualify + CTA.`)} disabled={genLoading==="callScript"}>{genLoading==="callScript"?"⏳":"🤖 Generate"}</button>
           </div>
           <textarea style={{...ip,minHeight:40,resize:"vertical"}} placeholder="Custom call script for this campaign..." value={nc.callScript} onChange={e=>setNc({...nc,callScript:e.target.value})} />
         </div>
 
         <div style={{marginBottom:10}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-            <span style={{fontSize:10.5,color:T.vi}}>Ã°ÂÂÂ¢ Content/Marketing Brief</span>
-            <button style={{...btG(T.vi),padding:"2px 8px",fontSize:9}} onClick={()=>generateField("contentBrief",`Create a content brief for Kapturise's "${nc.name}" campaign. Include: 3 Instagram posts, 1 Reel concept, 1 LinkedIn post, 1 YouTube Short idea. All referencing the event and "${nc.specialOffer}".`)} disabled={genLoading==="contentBrief"}>{genLoading==="contentBrief"?"Ã¢ÂÂ³":"Ã°ÂÂ¤Â Generate"}</button>
+            <span style={{fontSize:10.5,color:T.vi}}>📢 Content/Marketing Brief</span>
+            <button style={{...btG(T.vi),padding:"2px 8px",fontSize:9}} onClick={()=>generateField("contentBrief",`Create a content brief for Kapturise's "${nc.name}" campaign. Include: 3 Instagram posts, 1 Reel concept, 1 LinkedIn post, 1 YouTube Short idea. All referencing the event and "${nc.specialOffer}".`)} disabled={genLoading==="contentBrief"}>{genLoading==="contentBrief"?"⏳":"🤖 Generate"}</button>
           </div>
           <textarea style={{...ip,minHeight:40,resize:"vertical"}} placeholder="Content/social media brief for this campaign..." value={nc.contentBrief} onChange={e=>setNc({...nc,contentBrief:e.target.value})} />
         </div>
@@ -2032,20 +2116,20 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
       </div>}
 
       {campaigns.length===0&&!showNew&&<div style={{...cd,textAlign:"center",padding:30}}>
-        <div style={{fontSize:40,marginBottom:10}}>Ã°ÂÂÂ¯</div>
+        <div style={{fontSize:40,marginBottom:10}}>🎯</div>
         <div style={{fontSize:14,fontWeight:600,marginBottom:4}}>No Campaigns Yet</div>
         <div style={{fontSize:12,color:T.ts}}>Create a cross-department campaign with custom pricing, scripts, and multi-agent assignment.</div>
       </div>}
 
       {campaigns.map(camp=><div key={camp.id} style={cd}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-          <span style={{fontSize:18}}>Ã°ÂÂÂ¯</span>
+          <span style={{fontSize:18}}>🎯</span>
           <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700}}>{camp.name}</div>
-            <div style={{fontSize:11,color:T.td}}>{camp.created} ÃÂ· {pricing.find(p=>p.id===camp.serviceType)?.icon} {pricing.find(p=>p.id===camp.serviceType)?.name}</div>
+            <div style={{fontSize:11,color:T.td}}>{camp.created} · {pricing.find(p=>p.id===camp.serviceType)?.icon} {pricing.find(p=>p.id===camp.serviceType)?.name}</div>
           </div>
           <span style={bdg(T.em)}>{camp.status}</span>
         </div>
-        {camp.specialOffer&&<div style={{background:`${T.am}10`,borderRadius:6,padding:"5px 10px",marginBottom:6,fontSize:11.5,color:T.am}}>Ã°ÂÂÂ·Ã¯Â¸Â {camp.specialOffer}</div>}
+        {camp.specialOffer&&<div style={{background:`${T.am}10`,borderRadius:6,padding:"5px 10px",marginBottom:6,fontSize:11.5,color:T.am}}>🏷️ {camp.specialOffer}</div>}
 
         {/* Assigned agents */}
         {camp.assignedAgents?.length>0&&<div style={{marginBottom:8}}>
@@ -2056,22 +2140,22 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         </div>}
 
         {/* Campaign details */}
-        {camp.customPricing&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6}}><div style={{fontSize:10,color:T.td,marginBottom:3}}>Ã°ÂÂÂ² Campaign Pricing</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.customPricing}</div></div>}
-        {camp.dmScript&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6}}><div style={{fontSize:10,color:T.pk,marginBottom:3}}>Ã°ÂÂÂ¸ DM Script</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.dmScript}</div></div>}
-        {camp.emailScript&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6}}><div style={{fontSize:10,color:T.br,marginBottom:3}}>Ã¢ÂÂÃ¯Â¸Â Email Script</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.emailScript}</div></div>}
-        {camp.callScript&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6}}><div style={{fontSize:10,color:T.am,marginBottom:3}}>Ã°ÂÂÂ Call Script</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.callScript}</div></div>}
-        {camp.contentBrief&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6}}><div style={{fontSize:10,color:T.vi,marginBottom:3}}>Ã°ÂÂÂ¢ Content Brief</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.contentBrief}</div></div>}
-        {camp.url&&<div style={{fontSize:11,color:T.sk,marginBottom:4}}>Ã°ÂÂÂ {camp.url}</div>}
+        {camp.customPricing&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6}}><div style={{fontSize:10,color:T.td,marginBottom:3}}>💲 Campaign Pricing</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.customPricing}</div></div>}
+        {camp.dmScript&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6}}><div style={{fontSize:10,color:T.pk,marginBottom:3}}>📸 DM Script</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.dmScript}</div></div>}
+        {camp.emailScript&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6}}><div style={{fontSize:10,color:T.br,marginBottom:3}}>✉️ Email Script</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.emailScript}</div></div>}
+        {camp.callScript&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6}}><div style={{fontSize:10,color:T.am,marginBottom:3}}>📞 Call Script</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.callScript}</div></div>}
+        {camp.contentBrief&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6}}><div style={{fontSize:10,color:T.vi,marginBottom:3}}>📢 Content Brief</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.contentBrief}</div></div>}
+        {camp.url&&<div style={{fontSize:11,color:T.sk,marginBottom:4}}>🔗 {camp.url}</div>}
         {camp.prospects&&<div style={{background:T.sa,borderRadius:6,padding:8,maxHeight:150,overflow:"auto"}}><div style={{fontSize:10,color:T.td,marginBottom:3}}>Prospects</div><div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap"}}>{camp.prospects}</div></div>}
       </div>)}
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ SOCIAL ACCOUNTS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ SOCIAL ACCOUNTS ═══
   function SocialPage(){
     const[showAdd,setShowAdd]=useState(false);
     const[ns,setNs]=useState({name:"",platform:"Instagram",type:"client"});
-    const typeLabels={main:"Ã°ÂÂÂ¢ Kapturise Main Accounts",personal:"Ã°ÂÂÂ¤ Personal / Founder Accounts",sales:"Ã°ÂÂÂ Sales Outreach Accounts",industry:"Ã°ÂÂÂ Industry Portfolio Accounts",client:"Ã°ÂÂ¤Â Client Accounts"};
+    const typeLabels={main:"🏢 Kapturise Main Accounts",personal:"👤 Personal / Founder Accounts",sales:"📈 Sales Outreach Accounts",industry:"📂 Industry Portfolio Accounts",client:"🤝 Client Accounts"};
     const addAccount=()=>{if(!ns.name)return;setSocials(p=>[...p,{id:`s-${Date.now()}`,name:ns.name,platform:ns.platform,type:ns.type,token:"",status:"pending",followers:0}]);setNs({name:"",platform:"Instagram",type:"client"});setShowAdd(false);};
     const removeAccount=(id)=>setSocials(p=>p.filter(s=>s.id!==id));
 
@@ -2092,12 +2176,12 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
             <option value="main">Kapturise Main</option><option value="personal">Personal / Founder</option><option value="sales">Sales Outreach</option><option value="industry">Industry Portfolio</option><option value="client">Client Account</option>
           </select>
         </div>
-        <input style={{...ip,marginBottom:8}} placeholder="Purpose / notes (e.g. 'Cold outreach Ã¢ÂÂ F&B, 20 connections/day')" value={ns.purpose||""} onChange={e=>setNs({...ns,purpose:e.target.value})} />
+        <input style={{...ip,marginBottom:8}} placeholder="Purpose / notes (e.g. 'Cold outreach — F&B, 20 connections/day')" value={ns.purpose||""} onChange={e=>setNs({...ns,purpose:e.target.value})} />
         <div style={{background:`${T.sk}10`,borderRadius:7,padding:12,marginBottom:10}}>
-          <div style={{fontSize:12,fontWeight:600,color:T.sk,marginBottom:4}}>Ã°ÂÂÂ¸ Meta Business Suite OAuth</div>
+          <div style={{fontSize:12,fontWeight:600,color:T.sk,marginBottom:4}}>📸 Meta Business Suite OAuth</div>
           <div style={{fontSize:11,color:T.ts,lineHeight:1.6}}>For Instagram: Click "Connect with Meta" to authorize via Meta Business Suite. This grants posting, DM, and insights access. Requires a Facebook Page linked to the Instagram Business/Creator account.</div>
           <button style={{...bt(T.sk),marginTop:8,display:"flex",alignItems:"center",gap:5}}>
-            <span>Ã°ÂÂÂ</span> Connect with Meta Business Suite
+            <span>🔗</span> Connect with Meta Business Suite
           </button>
           <div style={{fontSize:10,color:T.td,marginTop:6}}>For LinkedIn: OAuth via LinkedIn Marketing API. For TikTok: TikTok for Business. For YouTube: Google OAuth + YouTube Data API v3 (upload, manage, analytics).</div>
         </div>
@@ -2112,12 +2196,12 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
           {accs.map(s=>{
             const assignedAgs=(s.assignedAgents||[]).map(aid=>agents.find(a=>a.id===aid)).filter(Boolean);
             return <div key={s.id} style={{display:"flex",alignItems:"start",gap:10,padding:"10px 0",borderBottom:`1px solid ${T.bd}`}}>
-            <span style={{fontSize:18,marginTop:2}}>{s.platform==="Instagram"?"Ã°ÂÂÂ¸":s.platform==="LinkedIn"?"Ã°ÂÂÂ¼":s.platform==="TikTok"?"Ã°ÂÂÂµ":s.platform==="YouTube"?"Ã°ÂÂÂ¥":s.platform==="Facebook"?"Ã°ÂÂÂ":"Ã°ÂÂÂ±"}</span>
+            <span style={{fontSize:18,marginTop:2}}>{s.platform==="Instagram"?"📸":s.platform==="LinkedIn"?"💼":s.platform==="TikTok"?"🎵":s.platform==="YouTube"?"🎥":s.platform==="Facebook"?"📘":"📱"}</span>
             <div style={{flex:1}}>
               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                 <span style={{fontSize:12.5,fontWeight:700}}>{s.name}</span>
                 <span style={bdg(s.status==="connected"?T.em:T.am)}>{s.status==="connected"?"Connected":"Pending"}</span>
-                <span style={{fontSize:10,color:T.td}}>{s.platform} ÃÂ· {s.followers?.toLocaleString()||0} followers</span>
+                <span style={{fontSize:10,color:T.td}}>{s.platform} · {s.followers?.toLocaleString()||0} followers</span>
               </div>
               {s.purpose&&<div style={{fontSize:11,color:T.ts,marginTop:3}}>{s.purpose}</div>}
               {assignedAgs.length>0&&<div style={{display:"flex",alignItems:"center",gap:4,marginTop:4,flexWrap:"wrap"}}>
@@ -2127,7 +2211,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
             </div>
             <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
               {s.status==="pending"&&<button style={{...bt(T.sk),padding:"4px 10px",fontSize:10}}>Authorize</button>}
-              <button style={{...btG(T.rs),padding:"4px 8px",fontSize:10}} onClick={()=>removeAccount(s.id)}>ÃÂ</button>
+              <button style={{...btG(T.rs),padding:"4px 8px",fontSize:10}} onClick={()=>removeAccount(s.id)}>×</button>
             </div>
           </div>;})}
         </div>;
@@ -2135,7 +2219,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ PROPOSALS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ PROPOSALS ═══
   function ProposalsPage(){
     const[selTemplate,setSelTemplate]=useState(0);
     const[selLead,setSelLead]=useState("");
@@ -2157,7 +2241,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
       const svc=pricing.find(p=>p.id===lead.serviceType);
       const r=await callAI(
         `You are a proposal writer for Kapturise. ${CTX} Write professional, persuasive proposals.`,
-        `Fill in this proposal template for ${lead.name}.\n\nClient: ${lead.name} (${lead.ind})\nContact: ${lead.contactName}, ${lead.contactTitle}\nRequirements: ${lead.requirements||lead.notes}\nService: ${svc?.name||"General"} Ã¢ÂÂ Base: ${svc?.base||0} ${svc?.unit||"AED"}\nDeal value: ${lead.val} AED\n\nTemplate sections to fill:\n${template.sections.map(s=>`## ${s.title}\n${s.body}`).join("\n\n")}\n\nReplace all {variables} with real values for this client. Make it persuasive. Keep the structure.`
+        `Fill in this proposal template for ${lead.name}.\n\nClient: ${lead.name} (${lead.ind})\nContact: ${lead.contactName}, ${lead.contactTitle}\nRequirements: ${lead.requirements||lead.notes}\nService: ${svc?.name||"General"} — Base: ${svc?.base||0} ${svc?.unit||"AED"}\nDeal value: ${lead.val} AED\n\nTemplate sections to fill:\n${template.sections.map(s=>`## ${s.title}\n${s.body}`).join("\n\n")}\n\nReplace all {variables} with real values for this client. Make it persuasive. Keep the structure.`
       );
       setGenResult(r);setGenLoading(false);
     };
@@ -2175,10 +2259,10 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
 
     return <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <h2 style={{fontSize:18,fontWeight:700}}>Ã°ÂÂÂ Proposals</h2>
+        <h2 style={{fontSize:18,fontWeight:700}}>📄 Proposals</h2>
         <div style={{display:"flex",gap:6}}>
           <button style={bt(T.sk)} onClick={addTemplate}>+ New Template</button>
-          <button style={btG(T.vi)} onClick={()=>setShowUpload(!showUpload)}>Ã°ÂÂÂ¤ Upload Template</button>
+          <button style={btG(T.vi)} onClick={()=>setShowUpload(!showUpload)}>📤 Upload Template</button>
         </div>
       </div>
 
@@ -2186,7 +2270,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         <div style={{fontSize:12,fontWeight:600,marginBottom:6}}>Upload Proposal Template</div>
         <div style={{fontSize:11,color:T.ts,marginBottom:8}}>Upload a .txt or .md file with ## headers for each section. Variables like {"{company}"}, {"{requirements}"} will be auto-filled.</div>
         <input ref={uploadRef} type="file" accept=".txt,.md,.doc" onChange={handleUpload} style={{display:"none"}} />
-        <button style={bt(T.vi)} onClick={()=>uploadRef.current?.click()}>Ã°ÂÂÂ Choose File</button>
+        <button style={bt(T.vi)} onClick={()=>uploadRef.current?.click()}>📁 Choose File</button>
       </div>}
 
       {/* Template selector + lead selector */}
@@ -2198,8 +2282,8 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         <div><div style={{fontSize:10,color:T.td,marginBottom:3}}>Generate For (select lead)</div>
           <select style={ip} value={selLead} onChange={e=>setSelLead(e.target.value)}>
             <option value="">Select a lead...</option>
-            {flaggedLeads.map(l=><option key={l.id} value={l.id}>Ã°ÂÂÂ¨ {l.name} Ã¢ÂÂ {l.stage} Ã¢ÂÂ {l.val?.toLocaleString()} AED</option>)}
-            {leads.filter(l=>!flaggedLeads.includes(l)).map(l=><option key={l.id} value={l.id}>{l.name} Ã¢ÂÂ {l.stage}</option>)}
+            {flaggedLeads.map(l=><option key={l.id} value={l.id}>🚨 {l.name} — {l.stage} — {l.val?.toLocaleString()} AED</option>)}
+            {leads.filter(l=>!flaggedLeads.includes(l)).map(l=><option key={l.id} value={l.id}>{l.name} — {l.stage}</option>)}
           </select></div>
       </div>
 
@@ -2210,14 +2294,14 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
             :<div style={{fontSize:14,fontWeight:700}}>{template.name}</div>}
           <div style={{display:"flex",gap:4}}>
             <button style={btG(editingTpl===selTemplate?T.em:T.ts)} onClick={()=>setEditingTpl(editingTpl===selTemplate?null:selTemplate)}>{editingTpl===selTemplate?"Done":"Edit Template"}</button>
-            <button style={bt(T.br)} onClick={generateProposal} disabled={!selLead||genLoading}>{genLoading?"Ã¢ÂÂ³ Generating...":"Ã°ÂÂ¤Â AI Fill for Lead"}</button>
+            <button style={bt(T.br)} onClick={generateProposal} disabled={!selLead||genLoading}>{genLoading?"⏳ Generating...":"🤖 AI Fill for Lead"}</button>
           </div>
         </div>
         {template.sections.map((sec,i)=><div key={i} style={{background:T.sa,borderRadius:7,padding:10,marginBottom:6}}>
           {editingTpl===selTemplate?<>
             <div style={{display:"flex",gap:6,marginBottom:4}}>
               <input style={{...ip,fontWeight:600}} value={sec.title} onChange={e=>updSection(selTemplate,i,"title",e.target.value)} />
-              <button onClick={()=>rmSection(selTemplate,i)} style={{background:"transparent",border:"none",color:T.rs,cursor:"pointer",fontSize:14}}>ÃÂ</button>
+              <button onClick={()=>rmSection(selTemplate,i)} style={{background:"transparent",border:"none",color:T.rs,cursor:"pointer",fontSize:14}}>×</button>
             </div>
             <textarea style={{...ip,minHeight:60,resize:"vertical"}} value={sec.body} onChange={e=>updSection(selTemplate,i,"body",e.target.value)} />
           </>:<>
@@ -2231,8 +2315,8 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
       {/* Generated proposal */}
       {genResult&&<div style={{...cd,borderColor:`${T.em}30`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-          <div style={{fontSize:13,fontWeight:700,color:T.em}}>Ã¢ÂÂ Generated Proposal</div>
-          <button style={btG(T.sk)} onClick={()=>navigator.clipboard?.writeText(genResult)}>Ã°ÂÂÂ Copy</button>
+          <div style={{fontSize:13,fontWeight:700,color:T.em}}>✅ Generated Proposal</div>
+          <button style={btG(T.sk)} onClick={()=>navigator.clipboard?.writeText(genResult)}>📋 Copy</button>
         </div>
         <div style={{background:T.bg,border:`1px solid ${T.bd}`,borderRadius:7,padding:14,fontSize:13,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.7,maxHeight:500,overflow:"auto"}}>{genResult}</div>
         <div style={{fontSize:10.5,color:T.td,marginTop:6}}>Copy this and paste into your proposal document, or send directly to the client.</div>
@@ -2240,7 +2324,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ FOLLOW-UP QUEUE Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ FOLLOW-UP QUEUE ═══
   function FollowUpPage(){
     const today=new Date().toISOString().split("T")[0];
     const todayFU=followUps.filter(f=>f.date<=today&&f.status==="pending");
@@ -2251,16 +2335,16 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     const addFU=()=>{if(!nf.leadName)return;setFollowUps(p=>[...p,{...nf,id:Date.now(),leadId:0,status:"pending"}]);setNf({leadName:"",contact:"",phone:"",type:"call",date:"",time:"",agent:"omar",notes:"",prevNotes:[]});setShowAdd(false);};
     const markDone=(id,note)=>setFollowUps(p=>p.map(f=>f.id===id?{...f,status:"done",doneNote:note||"Completed",doneDate:today}:f));
     const reschedule=(id,newDate)=>setFollowUps(p=>p.map(f=>f.id===id?{...f,date:newDate,prevNotes:[...f.prevNotes,`Rescheduled from ${f.date}`]}:f));
-    const typeIcon={call:"Ã°ÂÂÂ",email:"Ã¢ÂÂÃ¯Â¸Â",dm:"Ã°ÂÂÂ¸",meeting:"Ã°ÂÂ¤Â",whatsapp:"Ã°ÂÂÂ¬"};
+    const typeIcon={call:"📞",email:"✉️",dm:"📸",meeting:"🤝",whatsapp:"💬"};
     const typeColor={call:T.am,email:T.br,dm:T.pk,meeting:T.vi,whatsapp:T.em};
 
     const FUCard=({f,showDate})=>{const ag=agents.find(a=>a.id===f.agent);
       return <div style={{...cd,borderLeft:`3px solid ${typeColor[f.type]||T.td}`}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-          <span style={{fontSize:16}}>{typeIcon[f.type]||"Ã°ÂÂÂ"}</span>
+          <span style={{fontSize:16}}>{typeIcon[f.type]||"📌"}</span>
           <div style={{flex:1}}>
             <div style={{fontSize:13,fontWeight:700}}>{f.leadName}</div>
-            <div style={{fontSize:11,color:T.ts}}>{f.contact} ÃÂ· {f.phone}</div>
+            <div style={{fontSize:11,color:T.ts}}>{f.contact} · {f.phone}</div>
           </div>
           {showDate&&<div style={{textAlign:"right"}}><div style={{fontSize:11,fontWeight:600,color:f.date<=today?T.rs:T.ts}}>{f.date}</div>{f.time&&<div style={{fontSize:10,color:T.td}}>{f.time}</div>}</div>}
           {ag&&<Av a={ag} size={24} />}
@@ -2268,13 +2352,13 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         {f.notes&&<div style={{background:T.sa,borderRadius:6,padding:8,marginBottom:6,fontSize:12,color:T.tx}}>{f.notes}</div>}
         {/* Previous call/interaction notes */}
         {f.prevNotes?.length>0&&<div style={{marginBottom:6}}>
-          <div style={{fontSize:10,color:T.td,marginBottom:3}}>Ã°ÂÂÂ Previous Notes:</div>
+          <div style={{fontSize:10,color:T.td,marginBottom:3}}>📋 Previous Notes:</div>
           {f.prevNotes.map((n,i)=><div key={i} style={{fontSize:11,color:T.ts,padding:"2px 0",paddingLeft:10,borderLeft:`2px solid ${T.bd}`}}>{n}</div>)}
         </div>}
         {f.status==="pending"&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          <button style={{...bt(T.em),padding:"4px 10px",fontSize:10}} onClick={()=>{const note=prompt("Add completion note:");if(note!==null)markDone(f.id,note);}}>Ã¢ÂÂ Done</button>
-          <button style={{...btG(T.am),padding:"4px 10px",fontSize:10}} onClick={()=>{const nd=prompt("New date (YYYY-MM-DD):",f.date);if(nd)reschedule(f.id,nd);}}>Ã°ÂÂÂ Reschedule</button>
-          <button style={{...btG(T.sk),padding:"4px 10px",fontSize:10}} onClick={()=>setFollowUps(p=>p.map(x=>x.id===f.id?{...x,prevNotes:[...x.prevNotes,prompt("Add note:")||""].filter(Boolean)}:x))}>Ã°ÂÂÂ Add Note</button>
+          <button style={{...bt(T.em),padding:"4px 10px",fontSize:10}} onClick={()=>{const note=prompt("Add completion note:");if(note!==null)markDone(f.id,note);}}>✓ Done</button>
+          <button style={{...btG(T.am),padding:"4px 10px",fontSize:10}} onClick={()=>{const nd=prompt("New date (YYYY-MM-DD):",f.date);if(nd)reschedule(f.id,nd);}}>📅 Reschedule</button>
+          <button style={{...btG(T.sk),padding:"4px 10px",fontSize:10}} onClick={()=>setFollowUps(p=>p.map(x=>x.id===f.id?{...x,prevNotes:[...x.prevNotes,prompt("Add note:")||""].filter(Boolean)}:x))}>📝 Add Note</button>
           {/* Reassign to different agent */}
           <select style={{...ip,width:"auto",padding:"3px 8px",fontSize:10,display:"inline"}} value={f.agent} onChange={e=>{const newAg=e.target.value;const agName=agents.find(a=>a.id===newAg)?.name||"";setFollowUps(p=>p.map(x=>x.id===f.id?{...x,agent:newAg,prevNotes:[...x.prevNotes,`Reassigned to ${agName}`]}:x));}}>
             {agents.filter(a=>a.status==="active").map(a=><option key={a.id} value={a.id}>{a.name} ({ROLES[a.role]?.label})</option>)}
@@ -2283,14 +2367,14 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
           <button style={{...btG(T.vi),padding:"4px 10px",fontSize:10}} onClick={()=>{
             const cloneAg=prompt("Clone to which agent? Enter name or pick from:\n"+agents.filter(a=>a.status==="active"&&a.id!==f.agent).map(a=>`${a.name} (${ROLES[a.role]?.label})`).join("\n"));
             if(cloneAg){const match=agents.find(a=>a.name.toLowerCase().includes(cloneAg.toLowerCase()));if(match){setFollowUps(p=>[...p,{...f,id:Date.now(),agent:match.id,prevNotes:[...f.prevNotes,`Cloned from ${agents.find(a=>a.id===f.agent)?.name||"unknown"}'s queue`]}]);alert(`Follow-up cloned to ${match.name}`);}else{alert("Agent not found. Try the exact first or full name.");}}
-          }}>Ã°ÂÂÂ Clone to Agent</button>
+          }}>📋 Clone to Agent</button>
         </div>}
-        {f.status==="done"&&<div style={{fontSize:11,color:T.em}}>Ã¢ÂÂ {f.doneNote} ({f.doneDate})</div>}
+        {f.status==="done"&&<div style={{fontSize:11,color:T.em}}>✓ {f.doneNote} ({f.doneDate})</div>}
       </div>;};
 
     return <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div><h2 style={{fontSize:18,fontWeight:700,margin:0}}>Ã°ÂÂÂ Follow-Up Queue</h2><div style={{fontSize:11,color:T.ts,marginTop:2}}>{todayFU.length} due today ÃÂ· {upcomingFU.length} upcoming</div></div>
+        <div><h2 style={{fontSize:18,fontWeight:700,margin:0}}>📅 Follow-Up Queue</h2><div style={{fontSize:11,color:T.ts,marginTop:2}}>{todayFU.length} due today · {upcomingFU.length} upcoming</div></div>
         <button style={bt()} onClick={()=>setShowAdd(!showAdd)}>+ Schedule Follow-Up</button>
       </div>
 
@@ -2315,29 +2399,29 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
 
       {/* Today's queue */}
       {todayFU.length>0&&<div style={{marginBottom:16}}>
-        <div style={{fontSize:13,fontWeight:700,color:T.rs,marginBottom:8}}>Ã°ÂÂÂ´ Due Today ({todayFU.length})</div>
+        <div style={{fontSize:13,fontWeight:700,color:T.rs,marginBottom:8}}>🔴 Due Today ({todayFU.length})</div>
         {todayFU.map(f=><FUCard key={f.id} f={f} showDate />)}
       </div>}
       {todayFU.length===0&&<div style={{...cd,textAlign:"center",padding:20,borderColor:`${T.em}30`}}>
-        <div style={{fontSize:28,marginBottom:6}}>Ã¢ÂÂ</div>
+        <div style={{fontSize:28,marginBottom:6}}>✅</div>
         <div style={{fontSize:13,fontWeight:600,color:T.em}}>No follow-ups due today</div>
       </div>}
 
       {/* Upcoming */}
       {upcomingFU.length>0&&<div style={{marginBottom:16}}>
-        <div style={{fontSize:13,fontWeight:600,color:T.sk,marginBottom:8}}>Ã°ÂÂÂ Upcoming ({upcomingFU.length})</div>
+        <div style={{fontSize:13,fontWeight:600,color:T.sk,marginBottom:8}}>📅 Upcoming ({upcomingFU.length})</div>
         {upcomingFU.sort((a,b)=>a.date.localeCompare(b.date)).map(f=><FUCard key={f.id} f={f} showDate />)}
       </div>}
 
       {/* Completed */}
       {completedFU.length>0&&<div>
-        <div style={{fontSize:13,fontWeight:600,color:T.em,marginBottom:8}}>Ã¢ÂÂ Completed ({completedFU.length})</div>
+        <div style={{fontSize:13,fontWeight:600,color:T.em,marginBottom:8}}>✓ Completed ({completedFU.length})</div>
         {completedFU.slice(0,5).map(f=><FUCard key={f.id} f={f} showDate />)}
       </div>}
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ SOCIAL OUTREACH TRACKER Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ SOCIAL OUTREACH TRACKER ═══
   function SocialOutreachPage(){
     const[showAdd,setShowAdd]=useState(false);
     const[filter,setFilter]=useState("all");
@@ -2358,9 +2442,9 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     };
 
     const addAccount=()=>{if(!ns.handle)return;
-      if(isApproached(ns.handle)){if(!confirm(`Ã¢ÂÂ Ã¯Â¸Â ${ns.handle} has already been approached by ${agents.find(a=>a.id===approachedRegistry[ns.handle.toLowerCase()]?.agent)?.name||"another agent"}. Add anyway?`))return;}
+      if(isApproached(ns.handle)){if(!confirm(`⚠️ ${ns.handle} has already been approached by ${agents.find(a=>a.id===approachedRegistry[ns.handle.toLowerCase()]?.agent)?.name||"another agent"}. Add anyway?`))return;}
       markApproached(ns.handle,ns.agent,"instagram");
-      setSocialOutreach(p=>[...p,{id:Date.now(),handle:ns.handle,platform:ns.platform,businessName:ns.businessName||ns.handle,industry:ns.industry,aiSuggested:ns.industry,confirmed:!!ns.industry,agent:ns.agent,actions:[],status:"new",lastContact:"Ã¢ÂÂ"}]);setNs({handle:"",platform:"Instagram",businessName:"",industry:"",agent:"noor"});setShowAdd(false);};
+      setSocialOutreach(p=>[...p,{id:Date.now(),handle:ns.handle,platform:ns.platform,businessName:ns.businessName||ns.handle,industry:ns.industry,aiSuggested:ns.industry,confirmed:!!ns.industry,agent:ns.agent,actions:[],status:"new",lastContact:"—"}]);setNs({handle:"",platform:"Instagram",businessName:"",industry:"",agent:"noor"});setShowAdd(false);};
 
     const addAction=(id,action)=>setSocialOutreach(p=>p.map(s=>s.id===id?{...s,actions:[...s.actions,{...action,date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})}],lastContact:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),status:action.type==="dm"?"warm":s.status==="new"?"engaged":s.status}:s));
     const confirmIndustry=(id,ind)=>setSocialOutreach(p=>p.map(s=>s.id===id?{...s,industry:ind,confirmed:true}:s));
@@ -2370,7 +2454,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
 
     return <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div><h2 style={{fontSize:18,fontWeight:700,margin:0}}>Ã°ÂÂÂ¸ Social Outreach</h2><div style={{fontSize:11,color:T.ts,marginTop:2}}>{socialOutreach.length} accounts tracked</div></div>
+        <div><h2 style={{fontSize:18,fontWeight:700,margin:0}}>📸 Social Outreach</h2><div style={{fontSize:11,color:T.ts,marginTop:2}}>{socialOutreach.length} accounts tracked</div></div>
         <button style={bt(T.pk)} onClick={()=>setShowAdd(!showAdd)}>+ Add Account</button>
       </div>
 
@@ -2385,7 +2469,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Track New Social Account</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,marginBottom:8}}>
           <input style={ip} placeholder="@handle (e.g. @saltdxb)" value={ns.handle} onChange={e=>setNs({...ns,handle:e.target.value})} />
-          <button style={{...bt(T.vi),padding:"8px 12px",fontSize:10}} onClick={()=>detectIndustry(ns.handle)} disabled={aiLoading||!ns.handle}>{aiLoading?"Ã¢ÂÂ³ Detecting...":"Ã°ÂÂ¤Â AI Detect"}</button>
+          <button style={{...bt(T.vi),padding:"8px 12px",fontSize:10}} onClick={()=>detectIndustry(ns.handle)} disabled={aiLoading||!ns.handle}>{aiLoading?"⏳ Detecting...":"🤖 AI Detect"}</button>
           <select style={ip} value={ns.platform} onChange={e=>setNs({...ns,platform:e.target.value})}>
             <option>Instagram</option><option>LinkedIn</option><option>TikTok</option>
           </select>
@@ -2407,15 +2491,15 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
       {filteredAccounts.map(acc=>{const ag=agents.find(a=>a.id===acc.agent);
         return <div key={acc.id} style={cd}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-            <div style={{width:36,height:36,borderRadius:8,background:`${T.pk}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>Ã°ÂÂÂ¸</div>
+            <div style={{width:36,height:36,borderRadius:8,background:`${T.pk}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📸</div>
             <div style={{flex:1}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <span style={{fontSize:14,fontWeight:700}}>{acc.handle}</span>
                 <span style={bdg(statusColor[acc.status]||T.td)}>{acc.status}</span>
                 {acc.confirmed?<span style={bdg(T.cy)}>{acc.industry}</span>
-                  :<span style={{...bdg(T.am),cursor:"pointer"}} onClick={()=>{const ind=prompt("Confirm industry:",acc.aiSuggested);if(ind)confirmIndustry(acc.id,ind);}}>Ã¢ÂÂ Ã¯Â¸Â {acc.aiSuggested||"Unknown"} Ã¢ÂÂ click to confirm</span>}
+                  :<span style={{...bdg(T.am),cursor:"pointer"}} onClick={()=>{const ind=prompt("Confirm industry:",acc.aiSuggested);if(ind)confirmIndustry(acc.id,ind);}}>⚠️ {acc.aiSuggested||"Unknown"} — click to confirm</span>}
               </div>
-              <div style={{fontSize:11,color:T.ts}}>{acc.businessName} ÃÂ· {acc.platform} ÃÂ· Last: {acc.lastContact}</div>
+              <div style={{fontSize:11,color:T.ts}}>{acc.businessName} · {acc.platform} · Last: {acc.lastContact}</div>
             </div>
             {ag&&<Av a={ag} size={24} />}
           </div>
@@ -2426,38 +2510,38 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
               <span style={{fontSize:10,color:T.td,minWidth:50}}>{a.date}</span>
               <span style={bdg({follow:T.sk,like:T.pk,comment:T.vi,dm:T.br,voice:T.am}[a.type]||T.td)}>{a.type}</span>
               <span style={{fontSize:11,color:T.ts,flex:1}}>{a.note}</span>
-              {a.response&&<span style={{fontSize:11,color:T.em,fontWeight:600}}>Ã¢ÂÂ {a.response}</span>}
+              {a.response&&<span style={{fontSize:11,color:T.em,fontWeight:600}}>→ {a.response}</span>}
             </div>)}
           </div>}
 
           {/* Quick actions */}
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-            {[{t:"like",l:"Ã°ÂÂÂ Like"},{t:"comment",l:"Ã°ÂÂÂ¬ Comment"},{t:"follow",l:"Ã¢ÂÂ Follow"},{t:"dm",l:"Ã°ÂÂÂ© DM"},{t:"voice",l:"Ã°ÂÂÂ¤ Voice"}].map(({t,l})=>
-              <button key={t} style={{...btG(T.ts),padding:"3px 8px",fontSize:9.5}} onClick={()=>{const note=prompt(`${l} Ã¢ÂÂ what did you ${t}?`);if(note){const resp=t==="dm"?prompt("Response received? (leave blank if none)"):null;addAction(acc.id,{type:t,note,response:resp||""});}}}>
+            {[{t:"like",l:"👍 Like"},{t:"comment",l:"💬 Comment"},{t:"follow",l:"➕ Follow"},{t:"dm",l:"📩 DM"},{t:"voice",l:"🎤 Voice"}].map(({t,l})=>
+              <button key={t} style={{...btG(T.ts),padding:"3px 8px",fontSize:9.5}} onClick={()=>{const note=prompt(`${l} — what did you ${t}?`);if(note){const resp=t==="dm"?prompt("Response received? (leave blank if none)"):null;addAction(acc.id,{type:t,note,response:resp||""});}}}>
                 {l}
               </button>)}
-            <button style={{...btG(T.em),padding:"3px 8px",fontSize:9.5}} onClick={()=>setSocialOutreach(p=>p.map(s=>s.id===acc.id?{...s,status:"converted"}:s))}>Ã¢ÂÂ Convert to Lead</button>
+            <button style={{...btG(T.em),padding:"3px 8px",fontSize:9.5}} onClick={()=>setSocialOutreach(p=>p.map(s=>s.id===acc.id?{...s,status:"converted"}:s))}>✓ Convert to Lead</button>
           </div>
         </div>;})}
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ INVESTOR PIPELINE Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ INVESTOR PIPELINE ═══
   function InvestorPipeline(){
     const[expanded,setExpanded]=useState(null);
     const[showAdd,setShowAdd]=useState(false);
     const[openInvTr,setOpenInvTr]=useState({});
     const toggleInvTr=(invId,idx)=>setOpenInvTr(p=>({...p,[`${invId}-${idx}`]:!p[`${invId}-${idx}`]}));
-    const[ni,setNi]=useState({fund:"",size:"",thesis:"",stageFocus:"",partner:"",partnerTitle:"",email:"",phone:"",linkedin:"",checkMin:0,checkMax:0,portfolio:"",stage:"Research",pitchDeck:"Not sent",ddStatus:"Ã¢ÂÂ",termSheet:"Ã¢ÂÂ",meetingNotes:"",nextFollowUp:"",assignedTo:"yara"});
+    const[ni,setNi]=useState({fund:"",size:"",thesis:"",stageFocus:"",partner:"",partnerTitle:"",email:"",phone:"",linkedin:"",checkMin:0,checkMax:0,portfolio:"",stage:"Research",pitchDeck:"Not sent",ddStatus:"—",termSheet:"—",meetingNotes:"",nextFollowUp:"",assignedTo:"yara"});
     const invStages=[{s:"Research",d:"Identify + qualify investor",c:T.td},{s:"Connect",d:"LinkedIn/intro/warm email",c:T.sk},{s:"Pitch",d:"1-pager or deck sent",c:T.vi},{s:"Meeting",d:"Intro call or in-person",c:T.am},{s:"Due Diligence",d:"Sharing detailed info",c:T.br},{s:"Term Sheet",d:"Negotiating terms",c:T.pk},{s:"Closed",d:"Investment received",c:T.em}];
-    const addInv=()=>{if(!ni.fund)return;setInvestors(p=>[...p,{...ni,id:Date.now()}]);setNi({fund:"",size:"",thesis:"",stageFocus:"",partner:"",partnerTitle:"",email:"",phone:"",linkedin:"",checkMin:0,checkMax:0,portfolio:"",stage:"Research",pitchDeck:"Not sent",ddStatus:"Ã¢ÂÂ",termSheet:"Ã¢ÂÂ",meetingNotes:"",nextFollowUp:"",assignedTo:"yara"});setShowAdd(false);};
+    const addInv=()=>{if(!ni.fund)return;setInvestors(p=>[...p,{...ni,id:Date.now()}]);setNi({fund:"",size:"",thesis:"",stageFocus:"",partner:"",partnerTitle:"",email:"",phone:"",linkedin:"",checkMin:0,checkMax:0,portfolio:"",stage:"Research",pitchDeck:"Not sent",ddStatus:"—",termSheet:"—",meetingNotes:"",nextFollowUp:"",assignedTo:"yara"});setShowAdd(false);};
     const updInv=(id,f,v)=>setInvestors(p=>p.map(i=>i.id===id?{...i,[f]:v}:i));
     const delInv=(id)=>setInvestors(p=>p.filter(i=>i.id!==id));
     const totalPipe=investors.reduce((s,i)=>s+(i.checkMax||0),0);
 
     return <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div><h2 style={{fontSize:18,fontWeight:700,margin:0}}>Ã°ÂÂÂ° Investor Pipeline</h2><div style={{fontSize:11,color:T.ts,marginTop:2}}>{investors.length} investors ÃÂ· Potential: ${(totalPipe/1000000).toFixed(1)}M</div></div>
+        <div><h2 style={{fontSize:18,fontWeight:700,margin:0}}>💰 Investor Pipeline</h2><div style={{fontSize:11,color:T.ts,marginTop:2}}>{investors.length} investors · Potential: ${(totalPipe/1000000).toFixed(1)}M</div></div>
         <button style={bt(T.li)} onClick={()=>setShowAdd(!showAdd)}>+ Add Investor</button>
       </div>
 
@@ -2509,13 +2593,13 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
                 <span style={bdg(st?.c||T.td)}>{inv.stage}</span>
                 <span style={{fontSize:11,color:T.td}}>{inv.size}</span>
               </div>
-              <div style={{fontSize:11.5,color:T.ts,marginTop:2}}>Ã°ÂÂÂ¤ {inv.partner} Ã¢ÂÂ {inv.partnerTitle}</div>
+              <div style={{fontSize:11.5,color:T.ts,marginTop:2}}>👤 {inv.partner} — {inv.partnerTitle}</div>
             </div>
             <div style={{textAlign:"right"}}>
-              <div style={{fontSize:13,fontWeight:700,color:T.li,fontFamily:F.m}}>${inv.checkMin?.toLocaleString()} Ã¢ÂÂ ${inv.checkMax?.toLocaleString()}</div>
+              <div style={{fontSize:13,fontWeight:700,color:T.li,fontFamily:F.m}}>${inv.checkMin?.toLocaleString()} – ${inv.checkMax?.toLocaleString()}</div>
               <div style={{fontSize:10,color:T.td}}>{ag?.name||"Unassigned"}</div>
             </div>
-            <span style={{fontSize:13,color:T.td}}>{isOpen?"Ã¢ÂÂ²":"Ã¢ÂÂ¼"}</span>
+            <span style={{fontSize:13,color:T.td}}>{isOpen?"▲":"▼"}</span>
           </div>
 
           {isOpen&&<div style={{marginTop:12,borderTop:`1px solid ${T.bd}`,paddingTop:12}} onClick={e=>e.stopPropagation()}>
@@ -2523,7 +2607,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
               <div style={{background:T.sa,borderRadius:6,padding:8}}>
                 <div style={{fontSize:9.5,color:T.td,textTransform:"uppercase",marginBottom:3}}>Fund Details</div>
                 <div style={{fontSize:12}}>{inv.fund}</div>
-                <div style={{fontSize:11,color:T.ts}}>{inv.size} ÃÂ· {inv.stageFocus}</div>
+                <div style={{fontSize:11,color:T.ts}}>{inv.size} · {inv.stageFocus}</div>
                 <div style={{fontSize:11,color:T.ts,marginTop:2}}>{inv.thesis}</div>
               </div>
               <div style={{background:T.sa,borderRadius:6,padding:8}}>
@@ -2536,12 +2620,12 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
               </div>
               <div style={{background:T.sa,borderRadius:6,padding:8}}>
                 <div style={{fontSize:9.5,color:T.td,textTransform:"uppercase",marginBottom:3}}>Check Size</div>
-                <div style={{fontSize:16,fontWeight:700,color:T.li}}>${inv.checkMin?.toLocaleString()} Ã¢ÂÂ ${inv.checkMax?.toLocaleString()}</div>
+                <div style={{fontSize:16,fontWeight:700,color:T.li}}>${inv.checkMin?.toLocaleString()} – ${inv.checkMax?.toLocaleString()}</div>
                 {inv.portfolio&&<div style={{fontSize:11,color:T.ts,marginTop:4}}>Portfolio: {inv.portfolio}</div>}
               </div>
             </div>
 
-            {/* Status fields Ã¢ÂÂ editable */}
+            {/* Status fields — editable */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:10}}>
               <div><div style={{fontSize:9.5,color:T.td,marginBottom:3}}>Stage</div>
                 <select style={ip} value={inv.stage} onChange={e=>updInv(inv.id,"stage",e.target.value)}>
@@ -2551,10 +2635,10 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
                   {["Not sent","v1 Sent","v2 Sent","v3 Sent","Deck Requested","Presented Live"].map(o=><option key={o}>{o}</option>)}</select></div>
               <div><div style={{fontSize:9.5,color:T.td,marginBottom:3}}>Due Diligence</div>
                 <select style={ip} value={inv.ddStatus} onChange={e=>updInv(inv.id,"ddStatus",e.target.value)}>
-                  {["Ã¢ÂÂ","Not Started","In Progress","Financials Shared","Legal Review","Complete"].map(o=><option key={o}>{o}</option>)}</select></div>
+                  {["—","Not Started","In Progress","Financials Shared","Legal Review","Complete"].map(o=><option key={o}>{o}</option>)}</select></div>
               <div><div style={{fontSize:9.5,color:T.td,marginBottom:3}}>Term Sheet</div>
                 <select style={ip} value={inv.termSheet} onChange={e=>updInv(inv.id,"termSheet",e.target.value)}>
-                  {["Ã¢ÂÂ","Draft Received","Reviewing","Counter-Proposed","Agreed","Signed"].map(o=><option key={o}>{o}</option>)}</select></div>
+                  {["—","Draft Received","Reviewing","Counter-Proposed","Agreed","Signed"].map(o=><option key={o}>{o}</option>)}</select></div>
             </div>
 
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
@@ -2580,21 +2664,21 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
               {/* Interaction timeline with transcripts */}
               {(inv.interactions||[]).map((ix,j)=><div key={j} style={{display:"flex",gap:8,padding:"6px 0",borderBottom:`1px solid ${T.bd}`}}>
                 <div style={{width:20,height:20,borderRadius:"50%",background:`${T.li}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,flexShrink:0}}>
-                  {ix.type==="call"?"Ã°ÂÂÂ":ix.type==="email"?"Ã¢ÂÂÃ¯Â¸Â":ix.type==="meeting"?"Ã°ÂÂ¤Â":"Ã°ÂÂÂ"}
+                  {ix.type==="call"?"📞":ix.type==="email"?"✉️":ix.type==="meeting"?"🤝":"📝"}
                 </div>
                 <div style={{flex:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <span style={bdg(T.li)}>{ix.type}</span>
                     <span style={{fontSize:10,color:T.td}}>{ix.date}</span>
-                    {ix.transcript&&<span style={{fontSize:9,color:T.sk,cursor:"pointer",textDecoration:"underline"}} onClick={()=>toggleInvTr(inv.id,j)}>Ã°ÂÂÂ {openInvTr[`${inv.id}-${j}`]?"Hide":"View"} Full {ix.type==="call"?"Call Log":ix.type==="email"?"Email":ix.type==="meeting"?"Meeting Notes":"Transcript"}</span>}
+                    {ix.transcript&&<span style={{fontSize:9,color:T.sk,cursor:"pointer",textDecoration:"underline"}} onClick={()=>toggleInvTr(inv.id,j)}>📄 {openInvTr[`${inv.id}-${j}`]?"Hide":"View"} Full {ix.type==="call"?"Call Log":ix.type==="email"?"Email":ix.type==="meeting"?"Meeting Notes":"Transcript"}</span>}
                   </div>
                   <div style={{fontSize:11.5,color:T.ts,marginTop:2}}>{ix.summary}</div>
                   {ix.transcript&&openInvTr[`${inv.id}-${j}`]&&<div style={{background:T.bg,border:`1px solid ${T.bd}`,borderRadius:6,padding:8,marginTop:4,fontSize:11,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.5,maxHeight:250,overflow:"auto"}}>{ix.transcript}</div>}
                   {ix.transcript&&ix.transcript.length>100&&!ix.aiSummary&&<button style={{...btG(T.vi),padding:"2px 6px",fontSize:9,marginTop:3}} onClick={async()=>{
                     const sum=await callAI("Summarize this investor meeting in 3 bullet points: key discussions, investor interest level, next steps.","Transcript:\n"+ix.transcript);
                     updInv(inv.id,"interactions",(inv.interactions||[]).map((x,k)=>k===j?{...x,aiSummary:sum}:x));
-                  }}>Ã°ÂÂ¤Â AI Summary</button>}
-                  {ix.aiSummary&&<div style={{background:`${T.vi}10`,borderRadius:4,padding:6,marginTop:3,fontSize:10.5,color:T.vi,lineHeight:1.5}}>Ã°ÂÂ¤Â {ix.aiSummary}</div>}
+                  }}>🤖 AI Summary</button>}
+                  {ix.aiSummary&&<div style={{background:`${T.vi}10`,borderRadius:4,padding:6,marginTop:3,fontSize:10.5,color:T.vi,lineHeight:1.5}}>🤖 {ix.aiSummary}</div>}
                 </div>
               </div>)}
             </div>
@@ -2607,10 +2691,10 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ LEADS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ LEADS ═══
   function CRM(){
     const stgC={"Research":T.td,"Warm-Up":T.pk,"First Contact":T.sk,"Qualify":T.vi,"Discovery Call":T.am,"Proposal":T.br,"Negotiation":T.li,"Close":T.em};
-    const logIcons={email:"Ã¢ÂÂÃ¯Â¸Â",phone:"Ã°ÂÂÂ",instagram:"Ã°ÂÂÂ¸",linkedin:"Ã°ÂÂÂ¼",whatsapp:"Ã°ÂÂÂ¬",note:"Ã°ÂÂÂ",call:"Ã°ÂÂÂ"};
+    const logIcons={email:"✉️",phone:"📞",instagram:"📸",linkedin:"💼",whatsapp:"💬",note:"📝",call:"📞"};
     const[expanded,setExpanded]=useState(null);
     const[openTranscripts,setOpenTranscripts]=useState({});
     const toggleTranscript=(leadId,logIdx)=>setOpenTranscripts(p=>({...p,[`${leadId}-${logIdx}`]:!p[`${leadId}-${logIdx}`]}));
@@ -2631,9 +2715,9 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
           const newLeads=lines.slice(1).map((line,i)=>{
             const vals=line.match(/("([^"]*)"|[^,]*)/g)?.map(v=>v.replace(/^"|"$/g,"").trim())||[];
             const get=(keys)=>{for(const k of keys){const idx=headers.findIndex(h=>h.includes(k));if(idx>=0&&vals[idx])return vals[idx];}return "";};
-            return{id:Date.now()+i,name:get(["company","name","business"]),ind:get(["industry","sector","type"]),stage:"Research",contactName:get(["contact","person","first"]),contactTitle:get(["title","position","role"]),email:get(["email","mail"]),phone:get(["phone","mobile","tel"]),ig:get(["instagram","ig"]),linkedin:get(["linkedin"]),website:get(["website","web","url"]),val:parseInt(get(["value","deal","amount"]))||0,notes:get(["notes","comment"]),requirements:"",src:csvAssign.campaign?`CSV Ã¢ÂÂ ${campaigns.find(c=>c.id==csvAssign.campaign)?.name||"Campaign"}`:"CSV Import",srcType:"email",assignedTo:csvAssign.agent||agents[0]?.id||"",serviceType:csvAssign.service||pricing[0]?.id||"",logs:[]};
+            return{id:Date.now()+i,name:get(["company","name","business"]),ind:get(["industry","sector","type"]),stage:"Research",contactName:get(["contact","person","first"]),contactTitle:get(["title","position","role"]),email:get(["email","mail"]),phone:get(["phone","mobile","tel"]),ig:get(["instagram","ig"]),linkedin:get(["linkedin"]),website:get(["website","web","url"]),val:parseInt(get(["value","deal","amount"]))||0,notes:get(["notes","comment"]),requirements:"",src:csvAssign.campaign?`CSV → ${campaigns.find(c=>c.id==csvAssign.campaign)?.name||"Campaign"}`:"CSV Import",srcType:"email",assignedTo:csvAssign.agent||agents[0]?.id||"",serviceType:csvAssign.service||pricing[0]?.id||"",logs:[]};
           }).filter(l=>l.name);
-          if(newLeads.length>0){setLeads(p=>[...p,...newLeads]);setShowImport(false);alert(`Imported ${newLeads.length} leads Ã¢ÂÂ assigned to ${agents.find(a=>a.id===csvAssign.agent)?.name||"first agent"} for ${pricing.find(p=>p.id===csvAssign.service)?.name||"default service"}`);}
+          if(newLeads.length>0){setLeads(p=>[...p,...newLeads]);setShowImport(false);alert(`Imported ${newLeads.length} leads → assigned to ${agents.find(a=>a.id===csvAssign.agent)?.name||"first agent"} for ${pricing.find(p=>p.id===csvAssign.service)?.name||"default service"}`);}
         }catch(err){alert("CSV parse error: "+err.message);}
       };
       reader.readAsText(file);e.target.value="";
@@ -2643,13 +2727,13 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h2 style={{fontSize:18,fontWeight:700}}>Leads & CRM ({leads.length})</h2>
         <div style={{display:"flex",gap:6}}>
-          <button style={bt(T.sk)} onClick={()=>setShowImport(!showImport)}>Ã°ÂÂÂ¤ Import CSV</button>
-          <button style={btG(T.ts)} onClick={exportLeadsCSV}>Ã°ÂÂÂ¥ Export CSV</button>
+          <button style={bt(T.sk)} onClick={()=>setShowImport(!showImport)}>📤 Import CSV</button>
+          <button style={btG(T.ts)} onClick={exportLeadsCSV}>📥 Export CSV</button>
         </div>
       </div>
 
       {showImport&&<div style={cd}>
-        <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ¤ Import CSV Ã¢ÂÂ Assign to Agent, Service & Campaign</div>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>📤 Import CSV — Assign to Agent, Service & Campaign</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
           <div><div style={{fontSize:10,color:T.td,marginBottom:3}}>Assign to Agent</div>
             <select style={ip} value={csvAssign.agent} onChange={e=>setCsvAssign(p=>({...p,agent:e.target.value}))}>
@@ -2664,12 +2748,12 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
           <div><div style={{fontSize:10,color:T.td,marginBottom:3}}>Campaign (optional)</div>
             <select style={ip} value={csvAssign.campaign} onChange={e=>setCsvAssign(p=>({...p,campaign:e.target.value}))}>
               <option value="">No campaign</option>
-              {campaigns.map(c=><option key={c.id} value={c.id}>Ã°ÂÂÂ¯ {c.name}</option>)}
+              {campaigns.map(c=><option key={c.id} value={c.id}>🎯 {c.name}</option>)}
             </select></div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           <input ref={fileRef} type="file" accept=".csv" onChange={handleCSV} style={{display:"none"}} />
-          <button style={bt(T.sk)} onClick={()=>fileRef.current?.click()}>Ã°ÂÂÂ Choose CSV File</button>
+          <button style={bt(T.sk)} onClick={()=>fileRef.current?.click()}>📁 Choose CSV File</button>
           <span style={{fontSize:10.5,color:T.td}}>Columns: Company, Industry, Contact, Title, Email, Phone, Instagram, Website, Value, Notes</span>
         </div>
       </div>}
@@ -2684,15 +2768,15 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
                 {svc&&<span style={bdg(T.cy)}>{svc.icon} {svc.name}</span>}
               </div>
               <div style={{display:"flex",gap:12,marginTop:4,flexWrap:"wrap",fontSize:11.5,color:T.ts}}>
-                <span>Ã°ÂÂÂ¤ {l.contactName} Ã¢ÂÂ {l.contactTitle}</span>
-                <span>Ã°ÂÂÂ¢ {l.ind}</span>
+                <span>👤 {l.contactName} — {l.contactTitle}</span>
+                <span>🏢 {l.ind}</span>
               </div>
             </div>
             <div style={{textAlign:"right"}}>
               <div style={{fontSize:16,fontWeight:700,color:T.em,fontFamily:F.m}}>{l.val?.toLocaleString()} AED</div>
               <div style={{fontSize:10,color:T.td,marginTop:2,display:"flex",alignItems:"center",gap:4}}>{ag&&<Av a={ag} size={16} />}{ag?.name.split(" ")[0]}</div>
             </div>
-            <span style={{fontSize:14,color:T.td,marginLeft:4}}>{isOpen?"Ã¢ÂÂ²":"Ã¢ÂÂ¼"}</span>
+            <span style={{fontSize:14,color:T.td,marginLeft:4}}>{isOpen?"▲":"▼"}</span>
           </div>
 
           {/* Expanded detail */}
@@ -2720,32 +2804,32 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
 
             {/* Approached Via */}
             {l.approachedVia&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,padding:"6px 10px",background:`${T.sk}10`,borderRadius:6}}>
-              <span style={{fontSize:12}}>{l.approachedVia.channel==="Instagram"?"Ã°ÂÂÂ¸":l.approachedVia.channel==="LinkedIn"?"Ã°ÂÂÂ¼":l.approachedVia.channel==="Email"?"Ã¢ÂÂÃ¯Â¸Â":"Ã°ÂÂÂ"}</span>
+              <span style={{fontSize:12}}>{l.approachedVia.channel==="Instagram"?"📸":l.approachedVia.channel==="LinkedIn"?"💼":l.approachedVia.channel==="Email"?"✉️":"🔗"}</span>
               <div style={{fontSize:11.5,color:T.sk}}>Approached via <strong>{l.approachedVia.channel}</strong>: {l.approachedVia.handle}</div>
               <span style={{fontSize:10,color:T.td}}>First contact: {l.approachedVia.firstContact}</span>
             </div>}
 
-            {/* Requirements Ã¢ÂÂ Structured */}
+            {/* Requirements — Structured */}
             <div style={{background:T.sa,borderRadius:7,padding:12,marginBottom:14}}>
               <div style={{fontSize:10,color:T.td,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>Requirements</div>
               {typeof l.requirements==="object"&&l.requirements?<>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:6,marginBottom:8}}>
-                  {[{k:"photographers",l:"Ã°ÂÂÂ¸ Photographers",v:l.requirements.photographers},
-                    {k:"videographers",l:"Ã°ÂÂÂ¥ Videographers",v:l.requirements.videographers},
-                    {k:"hours",l:"Ã¢ÂÂ±Ã¯Â¸Â Hours",v:l.requirements.hours},
-                    {k:"editedVideos",l:"Ã°ÂÂÂ¬ Edited Videos",v:l.requirements.editedVideos},
-                    {k:"guests",l:"Ã°ÂÂÂ¥ Guests",v:l.requirements.guests},
+                  {[{k:"photographers",l:"📸 Photographers",v:l.requirements.photographers},
+                    {k:"videographers",l:"🎥 Videographers",v:l.requirements.videographers},
+                    {k:"hours",l:"⏱️ Hours",v:l.requirements.hours},
+                    {k:"editedVideos",l:"🎬 Edited Videos",v:l.requirements.editedVideos},
+                    {k:"guests",l:"👥 Guests",v:l.requirements.guests},
                   ].filter(x=>x.v).map(x=><div key={x.k} style={{background:T.cd,borderRadius:5,padding:"6px 8px",textAlign:"center"}}>
                     <div style={{fontSize:18,fontWeight:700,color:T.br}}>{x.v}</div>
                     <div style={{fontSize:9,color:T.td}}>{x.l}</div>
                   </div>)}
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:11.5}}>
-                  {l.requirements.date&&<div><span style={{color:T.td}}>Ã°ÂÂÂ Date:</span> <span style={{color:T.tx}}>{l.requirements.date}</span></div>}
-                  {l.requirements.venue&&<div><span style={{color:T.td}}>Ã°ÂÂÂ Venue:</span> <span style={{color:T.tx}}>{l.requirements.venue}</span></div>}
-                  {l.requirements.videoDuration&&<div><span style={{color:T.td}}>Ã¢ÂÂ±Ã¯Â¸Â Duration:</span> <span style={{color:T.tx}}>{l.requirements.videoDuration}</span></div>}
+                  {l.requirements.date&&<div><span style={{color:T.td}}>📅 Date:</span> <span style={{color:T.tx}}>{l.requirements.date}</span></div>}
+                  {l.requirements.venue&&<div><span style={{color:T.td}}>📍 Venue:</span> <span style={{color:T.tx}}>{l.requirements.venue}</span></div>}
+                  {l.requirements.videoDuration&&<div><span style={{color:T.td}}>⏱️ Duration:</span> <span style={{color:T.tx}}>{l.requirements.videoDuration}</span></div>}
                 </div>
-                {l.requirements.additionalNotes&&<div style={{fontSize:11.5,color:T.ts,marginTop:6,lineHeight:1.5}}>Ã°ÂÂÂ {l.requirements.additionalNotes}</div>}
+                {l.requirements.additionalNotes&&<div style={{fontSize:11.5,color:T.ts,marginTop:6,lineHeight:1.5}}>📝 {l.requirements.additionalNotes}</div>}
               </>:<div style={{fontSize:12.5,color:T.tx,lineHeight:1.6}}>{l.requirements||l.notes}</div>}
               {l.notes&&<div style={{fontSize:11.5,color:T.ts,marginTop:6,fontStyle:"italic",borderTop:`1px solid ${T.bd}`,paddingTop:6}}>{l.notes}</div>}
             </div>
@@ -2761,25 +2845,25 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
               {/* Inline add interaction form */}
               {addingLog===l.id&&<div style={{background:T.sa,borderRadius:7,padding:10,marginBottom:10,border:`1px solid ${T.sk}30`}} onClick={e=>e.stopPropagation()}>
                 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>
-                  {[{t:"call",l:"Ã°ÂÂÂ Call",c:T.am},{t:"email",l:"Ã¢ÂÂÃ¯Â¸Â Email",c:T.br},{t:"instagram",l:"Ã°ÂÂÂ¸ Instagram",c:T.pk},{t:"linkedin",l:"Ã°ÂÂÂ¼ LinkedIn",c:T.sk},{t:"whatsapp",l:"Ã°ÂÂÂ¬ WhatsApp",c:T.em},{t:"note",l:"Ã°ÂÂÂ Note",c:T.vi}].map(ch=>
+                  {[{t:"call",l:"📞 Call",c:T.am},{t:"email",l:"✉️ Email",c:T.br},{t:"instagram",l:"📸 Instagram",c:T.pk},{t:"linkedin",l:"💼 LinkedIn",c:T.sk},{t:"whatsapp",l:"💬 WhatsApp",c:T.em},{t:"note",l:"📝 Note",c:T.vi}].map(ch=>
                     <button key={ch.t} onClick={()=>setNewLog(p=>({...p,type:ch.t}))} style={{background:newLog.type===ch.t?`${ch.c}20`:T.bg,border:`1px solid ${newLog.type===ch.t?ch.c:T.bd}`,borderRadius:5,padding:"4px 10px",cursor:"pointer",fontSize:10.5,color:newLog.type===ch.t?ch.c:T.td,fontFamily:F.d,fontWeight:newLog.type===ch.t?600:400}}>{ch.l}</button>)}
                 </div>
                 <div style={{display:"flex",gap:4,marginBottom:6}}>
                   <select style={{...ip,width:100}} value={newLog.direction} onChange={e=>setNewLog(p=>({...p,direction:e.target.value}))}>
-                    <option value="outbound">Ã¢ÂÂ Outbound</option><option value="inbound">Ã¢ÂÂ Inbound</option>
+                    <option value="outbound">↗ Outbound</option><option value="inbound">↙ Inbound</option>
                   </select>
                   {(newLog.type==="instagram"||newLog.type==="linkedin"||newLog.type==="whatsapp")&&
                     <input style={{...ip,flex:1}} placeholder={newLog.type==="instagram"?"Instagram handle (e.g. @saltdxb)":newLog.type==="linkedin"?"LinkedIn profile URL":newLog.type==="whatsapp"?"WhatsApp number (+971...)":""} value={newLog.handle} onChange={e=>setNewLog(p=>({...p,handle:e.target.value}))} />}
                   {newLog.type==="call"&&<input style={{...ip,flex:1}} placeholder="Call duration (e.g. 15 min)" value={newLog.handle} onChange={e=>setNewLog(p=>({...p,handle:e.target.value}))} />}
                   {newLog.type==="email"&&<input style={{...ip,flex:1}} placeholder="Subject line" value={newLog.handle} onChange={e=>setNewLog(p=>({...p,handle:e.target.value}))} />}
                 </div>
-                <input style={{...ip,marginBottom:6}} placeholder="Summary (1-2 lines Ã¢ÂÂ what happened?)" value={newLog.msg} onChange={e=>setNewLog(p=>({...p,msg:e.target.value}))} />
+                <input style={{...ip,marginBottom:6}} placeholder="Summary (1-2 lines — what happened?)" value={newLog.msg} onChange={e=>setNewLog(p=>({...p,msg:e.target.value}))} />
                 <textarea style={{...ip,minHeight:80,resize:"vertical",marginBottom:6}} placeholder={newLog.type==="call"?"Paste full call transcript / notes here...":newLog.type==="email"?"Paste full email body here...":newLog.type==="instagram"?"Paste the DM conversation here...":newLog.type==="linkedin"?"Paste the LinkedIn message thread here...":newLog.type==="whatsapp"?"Paste WhatsApp conversation here...":"Notes..."} value={newLog.transcript} onChange={e=>setNewLog(p=>({...p,transcript:e.target.value}))} />
                 <button style={bt(T.sk)} onClick={()=>{
                   if(!newLog.msg)return;
-                  const channelLabel={instagram:"Ã°ÂÂÂ¸",linkedin:"Ã°ÂÂÂ¼",whatsapp:"Ã°ÂÂÂ¬",call:"Ã°ÂÂÂ",email:"Ã¢ÂÂÃ¯Â¸Â",note:"Ã°ÂÂÂ"}[newLog.type]||"";
+                  const channelLabel={instagram:"📸",linkedin:"💼",whatsapp:"💬",call:"📞",email:"✉️",note:"📝"}[newLog.type]||"";
                   const handleInfo=newLog.handle?` [${newLog.type==="instagram"?"IG: ":""}${newLog.type==="linkedin"?"LI: ":""}${newLog.type==="whatsapp"?"WA: ":""}${newLog.type==="call"?"Duration: ":""}${newLog.type==="email"?"Subject: ":""}${newLog.handle}]`:"";
-                  const logEntry={type:newLog.type,date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),msg:`${newLog.direction==="inbound"?"Ã¢ÂÂ ":"Ã¢ÂÂ "}${newLog.msg}${handleInfo}`,summary:newLog.msg,transcript:newLog.transcript,handle:newLog.handle,direction:newLog.direction};
+                  const logEntry={type:newLog.type,date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),msg:`${newLog.direction==="inbound"?"↙ ":"↗ "}${newLog.msg}${handleInfo}`,summary:newLog.msg,transcript:newLog.transcript,handle:newLog.handle,direction:newLog.direction};
                   setLeads(p=>p.map(ld=>ld.id===l.id?{...ld,logs:[...(ld.logs||[]),logEntry]}:ld));
                   setAddingLog(null);setNewLog({type:"call",msg:"",transcript:"",handle:"",direction:"outbound"});
                 }}>Save Interaction</button>
@@ -2787,21 +2871,21 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
               {(l.logs||[]).length===0&&<div style={{fontSize:12,color:T.td,padding:10,textAlign:"center"}}>No activity logged yet</div>}
               {(l.logs||[]).map((log,i)=><div key={i} style={{display:"flex",gap:10,marginBottom:0}}>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",width:30,flexShrink:0}}>
-                  <div style={{width:22,height:22,borderRadius:"50%",background:`${({email:T.br,phone:T.am,instagram:T.pk,linkedin:T.sk,whatsapp:T.em,note:T.td,call:T.am})[log.type]||T.td}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}}>{logIcons[log.type]||"Ã°ÂÂÂ"}</div>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:`${({email:T.br,phone:T.am,instagram:T.pk,linkedin:T.sk,whatsapp:T.em,note:T.td,call:T.am})[log.type]||T.td}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}}>{logIcons[log.type]||"📌"}</div>
                   {i<(l.logs||[]).length-1&&<div style={{width:1,height:16,background:T.bd}} />}
                 </div>
                 <div style={{flex:1,paddingBottom:8}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                    <span style={bdg(({email:T.br,phone:T.am,instagram:T.pk,linkedin:T.sk,whatsapp:T.em,note:T.vi})[log.type]||T.td)}>{log.direction==="inbound"?"Ã¢ÂÂ":"Ã¢ÂÂ"} {log.type}</span>
+                    <span style={bdg(({email:T.br,phone:T.am,instagram:T.pk,linkedin:T.sk,whatsapp:T.em,note:T.vi})[log.type]||T.td)}>{log.direction==="inbound"?"↙":"↗"} {log.type}</span>
                     <span style={{fontSize:10,color:T.td}}>{log.date}</span>
                     {log.handle&&<span style={{fontSize:10,color:({instagram:T.pk,linkedin:T.sk,whatsapp:T.em,call:T.am,email:T.br})[log.type]||T.ts,fontWeight:600}}>
                       {log.type==="instagram"?`IG: ${log.handle}`:log.type==="linkedin"?`LI: ${log.handle}`:log.type==="whatsapp"?`WA: ${log.handle}`:log.type==="call"?`Duration: ${log.handle}`:log.type==="email"?`Subject: ${log.handle}`:log.handle}
                     </span>}
-                    {log.transcript&&<span style={{fontSize:9,color:T.sk,cursor:"pointer",textDecoration:"underline"}} onClick={e=>{e.stopPropagation();toggleTranscript(l.id,i);}}>Ã°ÂÂÂ {openTranscripts[`${l.id}-${i}`]?"Hide":"View"} Full {log.type==="call"?"Call Log":log.type==="email"?"Email":log.type==="instagram"?"DM Thread":log.type==="linkedin"?"Messages":log.type==="whatsapp"?"Chat":"Transcript"}</span>}
+                    {log.transcript&&<span style={{fontSize:9,color:T.sk,cursor:"pointer",textDecoration:"underline"}} onClick={e=>{e.stopPropagation();toggleTranscript(l.id,i);}}>📄 {openTranscripts[`${l.id}-${i}`]?"Hide":"View"} Full {log.type==="call"?"Call Log":log.type==="email"?"Email":log.type==="instagram"?"DM Thread":log.type==="linkedin"?"Messages":log.type==="whatsapp"?"Chat":"Transcript"}</span>}
                   </div>
                   {/* Summary */}
                   <div style={{fontSize:12,color:T.ts,marginTop:3,lineHeight:1.5}}>{log.summary||log.msg}</div>
-                  {/* Full transcript Ã¢ÂÂ toggle via state */}
+                  {/* Full transcript — toggle via state */}
                   {log.transcript&&openTranscripts[`${l.id}-${i}`]&&<div style={{background:T.bg,border:`1px solid ${T.bd}`,borderRadius:6,padding:10,marginTop:6,fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:250,overflow:"auto"}}>
                     <div style={{fontSize:9,color:T.td,textTransform:"uppercase",marginBottom:4}}>Full Transcript</div>
                     {log.transcript}
@@ -2810,9 +2894,9 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
                   {log.transcript&&log.transcript.length>100&&!log.aiSummary&&<button style={{...btG(T.vi),padding:"2px 8px",fontSize:9,marginTop:4}} onClick={async(e)=>{e.stopPropagation();
                     const sum=await callAI("Summarize this conversation in 2-3 bullet points. Focus on: key decisions, action items, next steps, objections raised.","Transcript:\n"+log.transcript);
                     setLeads(p=>p.map(ld=>ld.id===l.id?{...ld,logs:(ld.logs||[]).map((lg,j)=>j===i?{...lg,aiSummary:sum}:lg)}:ld));
-                  }}>Ã°ÂÂ¤Â AI Summarize</button>}
+                  }}>🤖 AI Summarize</button>}
                   {log.aiSummary&&<div style={{background:`${T.vi}10`,borderRadius:5,padding:8,marginTop:4,fontSize:11,color:T.vi,lineHeight:1.5}}>
-                    <div style={{fontSize:9,fontWeight:600,marginBottom:2}}>Ã°ÂÂ¤Â AI Summary</div>{log.aiSummary}
+                    <div style={{fontSize:9,fontWeight:600,marginBottom:2}}>🤖 AI Summary</div>{log.aiSummary}
                   </div>}
                 </div>
               </div>)}
@@ -2828,7 +2912,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ SCRIPTS & TEMPLATES Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ SCRIPTS & TEMPLATES ═══
   function ScriptsPage(){
     // scripts & setScripts from App-level state
     const[tab,setTab]=useState("emails");
@@ -2836,7 +2920,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     const[newScript,setNewScript]=useState({name:"",subject:"",body:"",assignedAgents:[],assignedCampaigns:[]});
     const[genLoading,setGenLoading]=useState(false);
 
-    const tabs=[{k:"emails",l:"Ã°ÂÂÂ§ Emails",ch:"email"},{k:"linkedin",l:"Ã°ÂÂÂ¼ LinkedIn",ch:"linkedin"},{k:"dms",l:"Ã°ÂÂÂ¸ DMs",ch:"instagram"},{k:"calls",l:"Ã°ÂÂÂ Calls",ch:"phone"}];
+    const tabs=[{k:"emails",l:"📧 Emails",ch:"email"},{k:"linkedin",l:"💼 LinkedIn",ch:"linkedin"},{k:"dms",l:"📸 DMs",ch:"instagram"},{k:"calls",l:"📞 Calls",ch:"phone"}];
     const activeTab=tabs.find(t=>t.k===tab);
 
     const addScript=()=>{if(!newScript.name||!newScript.body)return;setScripts(s=>({...s,[tab]:[...s[tab],{id:Date.now(),name:newScript.name,subject:newScript.subject,body:newScript.body,channel:activeTab.ch,assignedAgents:newScript.assignedAgents||[],assignedCampaigns:newScript.assignedCampaigns||[]}]}));setNewScript({name:"",subject:"",body:"",assignedAgents:[],assignedCampaigns:[]});};
@@ -2856,18 +2940,18 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
       setNewScript(p=>({...p,body:r,name:`AI Generated ${new Date().toLocaleDateString()}`}));setGenLoading(false);};
 
     const AssignSection=({scriptId,assigned,campaigns:campAssigned,onToggleAgent,onToggleCampaign})=><div style={{marginTop:8}}>
-      <div style={{fontSize:10,color:T.td,marginBottom:4}}>Ã°ÂÂÂ¥ Assign to Agents:</div>
+      <div style={{fontSize:10,color:T.td,marginBottom:4}}>👥 Assign to Agents:</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
         {agents.map(a=>{const sel=(assigned||[]).includes(a.id);const ac=rc(a.role);
           return <button key={a.id} onClick={()=>onToggleAgent(scriptId,a.id)} style={{background:sel?`${ac}20`:T.bg,border:`1px solid ${sel?ac:T.bd}`,borderRadius:5,padding:"2px 7px",cursor:"pointer",fontSize:10,color:sel?ac:T.td,fontFamily:F.d}}>
-            {a.av} {a.name.split(" ")[0]}{sel&&" Ã¢ÂÂ"}
+            {a.av} {a.name.split(" ")[0]}{sel&&" ✓"}
           </button>;})}
       </div>
-      {campaigns.length>0&&<><div style={{fontSize:10,color:T.td,marginBottom:4}}>Ã°ÂÂÂ¯ Assign to Campaigns:</div>
+      {campaigns.length>0&&<><div style={{fontSize:10,color:T.td,marginBottom:4}}>🎯 Assign to Campaigns:</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
           {campaigns.map(c=>{const sel=(campAssigned||[]).includes(c.id);
             return <button key={c.id} onClick={()=>onToggleCampaign(scriptId,c.id)} style={{background:sel?`${T.vi}20`:T.bg,border:`1px solid ${sel?T.vi:T.bd}`,borderRadius:5,padding:"2px 7px",cursor:"pointer",fontSize:10,color:sel?T.vi:T.td,fontFamily:F.d}}>
-              Ã°ÂÂÂ¯ {c.name}{sel&&" Ã¢ÂÂ"}
+              🎯 {c.name}{sel&&" ✓"}
             </button>;})}
         </div></>}
     </div>;
@@ -2884,24 +2968,24 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
       <div style={cd}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
           <div style={{fontSize:12.5,fontWeight:600}}>Add New</div>
-          <button style={btG(T.vi)} onClick={()=>aiGenerate(activeTab?.ch)} disabled={genLoading}>{genLoading?"Ã¢ÂÂ³ ...":"Ã°ÂÂ¤Â AI Generate"}</button>
+          <button style={btG(T.vi)} onClick={()=>aiGenerate(activeTab?.ch)} disabled={genLoading}>{genLoading?"⏳ ...":"🤖 AI Generate"}</button>
         </div>
         <input style={{...ip,marginBottom:6}} placeholder="Template name" value={newScript.name} onChange={e=>setNewScript({...newScript,name:e.target.value})} />
         {tab==="emails"&&<input style={{...ip,marginBottom:6}} placeholder="Subject line" value={newScript.subject} onChange={e=>setNewScript({...newScript,subject:e.target.value})} />}
         <textarea style={{...ip,minHeight:80,resize:"vertical",marginBottom:6}} placeholder="Script body... {name}, {company}, {industry}" value={newScript.body} onChange={e=>setNewScript({...newScript,body:e.target.value})} />
 
         <div style={{marginBottom:8}}>
-          <div style={{fontSize:10,color:T.td,marginBottom:4}}>Ã°ÂÂÂ¥ Assign to Agents:</div>
+          <div style={{fontSize:10,color:T.td,marginBottom:4}}>👥 Assign to Agents:</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
             {agents.map(a=>{const sel=(newScript.assignedAgents||[]).includes(a.id);const ac=rc(a.role);
-              return <button key={a.id} onClick={()=>toggleNewAgent(a.id)} style={{background:sel?`${ac}20`:T.bg,border:`1px solid ${sel?ac:T.bd}`,borderRadius:5,padding:"2px 7px",cursor:"pointer",fontSize:10,color:sel?ac:T.td,fontFamily:F.d}}>{a.av} {a.name.split(" ")[0]}{sel&&" Ã¢ÂÂ"}</button>;})}
+              return <button key={a.id} onClick={()=>toggleNewAgent(a.id)} style={{background:sel?`${ac}20`:T.bg,border:`1px solid ${sel?ac:T.bd}`,borderRadius:5,padding:"2px 7px",cursor:"pointer",fontSize:10,color:sel?ac:T.td,fontFamily:F.d}}>{a.av} {a.name.split(" ")[0]}{sel&&" ✓"}</button>;})}
           </div>
         </div>
         {campaigns.length>0&&<div style={{marginBottom:8}}>
-          <div style={{fontSize:10,color:T.td,marginBottom:4}}>Ã°ÂÂÂ¯ Assign to Campaigns:</div>
+          <div style={{fontSize:10,color:T.td,marginBottom:4}}>🎯 Assign to Campaigns:</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
             {campaigns.map(c=>{const sel=(newScript.assignedCampaigns||[]).includes(c.id);
-              return <button key={c.id} onClick={()=>toggleNewCampaign(c.id)} style={{background:sel?`${T.vi}20`:T.bg,border:`1px solid ${sel?T.vi:T.bd}`,borderRadius:5,padding:"2px 7px",cursor:"pointer",fontSize:10,color:sel?T.vi:T.td,fontFamily:F.d}}>Ã°ÂÂÂ¯ {c.name}{sel&&" Ã¢ÂÂ"}</button>;})}
+              return <button key={c.id} onClick={()=>toggleNewCampaign(c.id)} style={{background:sel?`${T.vi}20`:T.bg,border:`1px solid ${sel?T.vi:T.bd}`,borderRadius:5,padding:"2px 7px",cursor:"pointer",fontSize:10,color:sel?T.vi:T.td,fontFamily:F.d}}>🎯 {c.name}{sel&&" ✓"}</button>;})}
           </div>
         </div>}
         <button style={bt()} onClick={addScript}>Save Template</button>
@@ -2914,7 +2998,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
             :<div style={{fontSize:13,fontWeight:600}}>{sc.name}</div>}
           <div style={{display:"flex",gap:4}}>
             <button style={btG(editing===sc.id?T.em:T.ts)} onClick={()=>setEditing(editing===sc.id?null:sc.id)}>{editing===sc.id?"Done":"Edit"}</button>
-            <button style={btG(T.rs)} onClick={()=>deleteScript(sc.id)}>ÃÂ</button>
+            <button style={btG(T.rs)} onClick={()=>deleteScript(sc.id)}>×</button>
           </div>
         </div>
         {sc.subject&&(editing===sc.id?<input style={{...ip,marginBottom:6}} value={sc.subject} onChange={e=>updateScript(sc.id,"subject",e.target.value)} />
@@ -2925,7 +3009,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         {/* Assignment badges */}
         {((sc.assignedAgents||[]).length>0||(sc.assignedCampaigns||[]).length>0)&&<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:6}}>
           {(sc.assignedAgents||[]).map(agId=>{const ag=agents.find(a=>a.id===agId);if(!ag)return null;return <span key={agId} style={bdg(rc(ag.role))}>{ag.av} {ag.name.split(" ")[0]}</span>;})}
-          {(sc.assignedCampaigns||[]).map(cId=>{const cm=campaigns.find(c=>c.id===cId);if(!cm)return null;return <span key={cId} style={bdg(T.vi)}>Ã°ÂÂÂ¯ {cm.name}</span>;})}
+          {(sc.assignedCampaigns||[]).map(cId=>{const cm=campaigns.find(c=>c.id===cId);if(!cm)return null;return <span key={cId} style={bdg(T.vi)}>🎯 {cm.name}</span>;})}
         </div>}
 
         {/* Assignment editor when editing */}
@@ -2934,31 +3018,31 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ INTEGRATIONS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ INTEGRATIONS ═══
   function IntPage(){
     const[showKeys,setShowKeys]=useState(false);
     const[testResult,setTestResult]=useState(null);
-    const testGemini=async()=>{setTestResult("Testing...");const r=await generateImage("A simple red circle on white background, minimal");setTestResult(r.error?`Ã¢ÂÂ ${r.error}`:"Ã¢ÂÂ Gemini connected! Image generation working.");};
-    const testBland=async()=>{setTestResult("Testing...");if(!apiKeys.bland){setTestResult("Ã¢ÂÂ No API key entered");return;}setTestResult("Ã¢ÂÂ API key saved. Make a call from any Sales agent to test.");};
+    const testGemini=async()=>{setTestResult("Testing...");const r=await generateImage("A simple red circle on white background, minimal");setTestResult(r.error?`❌ ${r.error}`:"✅ Gemini connected! Image generation working.");};
+    const testBland=async()=>{setTestResult("Testing...");if(!apiKeys.bland){setTestResult("❌ No API key entered");return;}setTestResult("✅ API key saved. Make a call from any Sales agent to test.");};
 
     return <div>
       <h2 style={{fontSize:18,fontWeight:700,marginBottom:14}}>Integrations & API Keys</h2>
 
-      {/* Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ PROVIDER PREFERENCES Ã¢ÂÂ which provider for which task Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
+      {/* ═══ PROVIDER PREFERENCES — which provider for which task ═══ */}
       <div style={{...cd,borderColor:`${T.vi}30`}}>
-        <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Ã¢ÂÂÃ¯Â¸Â Provider Preferences</div>
-        <div style={{fontSize:10.5,color:T.ts,marginBottom:10}}>Choose which AI provider to use for each task type. If you have an OpenAI subscription, select it here Ã¢ÂÂ no need to pay for both. Agents will automatically route to your preferred provider.</div>
+        <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>⚙️ Provider Preferences</div>
+        <div style={{fontSize:10.5,color:T.ts,marginBottom:10}}>Choose which AI provider to use for each task type. If you have an OpenAI subscription, select it here — no need to pay for both. Agents will automatically route to your preferred provider.</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          {[{k:"llm",l:"Ã°ÂÂ§Â  Default AI (all tasks)",d:"Used for everything unless overridden below"},
-            {k:"llmProspecting",l:"Ã°ÂÂÂ Prospecting & Research",d:"Finding leads, analyzing accounts, scoring"},
-            {k:"llmProposals",l:"Ã°ÂÂÂ Proposals & Documents",d:"Writing proposals, contracts, formal content"},
-            {k:"llmScripts",l:"Ã°ÂÂÂ Scripts & Outreach",d:"DMs, emails, call scripts, captions"},
-            {k:"imageGen",l:"Ã°ÂÂÂ¨ Image Generation",d:"Social posts, thumbnails, ads",opts:["gemini","dalle","midjourney"]},
-            {k:"videoGen",l:"Ã°ÂÂÂ¬ Video Generation",d:"Reels, Shorts, ads",opts:["kling","runway","heygen"]},
-            {k:"voice",l:"Ã°ÂÂÂ Voice Generation",d:"Voiceovers, audio content",opts:["elevenlabs"]},
-            {k:"calls",l:"Ã°ÂÂÂ Phone Calls",d:"Cold calls, discovery calls",opts:["bland","vapi","twilio","retell","synthflow"]},
-            {k:"email",l:"Ã¢ÂÂÃ¯Â¸Â Email Sending",d:"Transactional emails, reports",opts:["gmail","sendgrid","mailgun","resend"]},
-            {k:"coldEmail",l:"Ã°ÂÂÂ§ Cold Email at Scale",d:"Sequences, warm-up, rotation",opts:["instantly"]},
+          {[{k:"llm",l:"🧠 Default AI (all tasks)",d:"Used for everything unless overridden below"},
+            {k:"llmProspecting",l:"🔍 Prospecting & Research",d:"Finding leads, analyzing accounts, scoring"},
+            {k:"llmProposals",l:"📄 Proposals & Documents",d:"Writing proposals, contracts, formal content"},
+            {k:"llmScripts",l:"📝 Scripts & Outreach",d:"DMs, emails, call scripts, captions"},
+            {k:"imageGen",l:"🎨 Image Generation",d:"Social posts, thumbnails, ads",opts:["gemini","dalle","midjourney"]},
+            {k:"videoGen",l:"🎬 Video Generation",d:"Reels, Shorts, ads",opts:["kling","runway","heygen"]},
+            {k:"voice",l:"🔊 Voice Generation",d:"Voiceovers, audio content",opts:["elevenlabs"]},
+            {k:"calls",l:"📞 Phone Calls",d:"Cold calls, discovery calls",opts:["bland","vapi","twilio","retell","synthflow"]},
+            {k:"email",l:"✉️ Email Sending",d:"Transactional emails, reports",opts:["gmail","sendgrid","mailgun","resend"]},
+            {k:"coldEmail",l:"📧 Cold Email at Scale",d:"Sequences, warm-up, rotation",opts:["instantly"]},
           ].map(pref=>{
             const llmOpts=["anthropic","openai","grok","deepseek","groq"];
             const opts=pref.opts||llmOpts;
@@ -2967,7 +3051,7 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
               <div style={{fontSize:11,fontWeight:600}}>{pref.l}</div>
               <div style={{fontSize:9.5,color:T.td,marginBottom:4}}>{pref.d}</div>
               <select style={{...ip,fontSize:11}} value={providerPrefs[pref.k]||opts[0]} onChange={e=>setProviderPrefs(p=>({...p,[pref.k]:e.target.value}))}>
-                {opts.map(o=><option key={o} value={o}>{provNames[o]||o} {apiKeys[o]?"Ã¢ÂÂ Connected":"(no key)"}</option>)}
+                {opts.map(o=><option key={o} value={o}>{provNames[o]||o} {apiKeys[o]?"✓ Connected":"(no key)"}</option>)}
               </select>
             </div>;})}
         </div>
@@ -2976,157 +3060,157 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
 
       {/* Connected APIs */}
       <div style={cd}>
-        <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Ã°ÂÂÂ¢ Connected</div>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>🟢 Connected</div>
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.bd}`}}>
-          <span style={{fontSize:16}}>Ã°ÂÂ§Â </span>
-          <div style={{flex:1}}><div style={{fontSize:12.5,fontWeight:600}}>Claude API (Anthropic)</div><div style={{fontSize:10.5,color:T.td}}>Powers all agent AI Ã¢ÂÂ prospecting, scripts, proposals, campaigns</div></div>
-          <span style={bdg(T.em)}>Ã¢ÂÂ Connected</span>
+          <span style={{fontSize:16}}>🧠</span>
+          <div style={{flex:1}}><div style={{fontSize:12.5,fontWeight:600}}>Claude API (Anthropic)</div><div style={{fontSize:10.5,color:T.td}}>Powers all agent AI — prospecting, scripts, proposals, campaigns</div></div>
+          <span style={bdg(T.em)}>✓ Connected</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.bd}`}}>
-          <span style={{fontSize:16}}>Ã°ÂÂÂÃ¯Â¸Â</span>
-          <div style={{flex:1}}><div style={{fontSize:12.5,fontWeight:600}}>Built-in CRM</div><div style={{fontSize:10.5,color:T.td}}>Leads, pipeline, activity logs Ã¢ÂÂ persistent storage</div></div>
-          <span style={bdg(T.em)}>Ã¢ÂÂ Active</span>
-          <button style={{...btG(T.sk),padding:"4px 10px",fontSize:10}} onClick={exportLeadsCSV}>Ã°ÂÂÂ¥ Export CSV</button>
+          <span style={{fontSize:16}}>🗄️</span>
+          <div style={{flex:1}}><div style={{fontSize:12.5,fontWeight:600}}>Built-in CRM</div><div style={{fontSize:10.5,color:T.td}}>Leads, pipeline, activity logs — persistent storage</div></div>
+          <span style={bdg(T.em)}>✓ Active</span>
+          <button style={{...btG(T.sk),padding:"4px 10px",fontSize:10}} onClick={exportLeadsCSV}>📥 Export CSV</button>
         </div>
       </div>
 
       {/* API Keys */}
       <div style={cd}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{fontSize:13,fontWeight:600}}>Ã°ÂÂÂ API Keys</div>
+          <div style={{fontSize:13,fontWeight:600}}>🔑 API Keys</div>
           <button style={btG(T.ts)} onClick={()=>setShowKeys(!showKeys)}>{showKeys?"Hide Keys":"Show Keys"}</button>
         </div>
 
         {/* Gemini / Nano Banana */}
         <div style={{background:T.sa,borderRadius:8,padding:12,marginBottom:10}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-            <span style={{fontSize:16}}>Ã°ÂÂÂ¨</span>
+            <span style={{fontSize:16}}>🎨</span>
             <div style={{flex:1}}><div style={{fontSize:12.5,fontWeight:600}}>Nano Banana (Google Gemini)</div><div style={{fontSize:10.5,color:T.td}}>AI image generation for social media posts</div></div>
             <span style={bdg(apiKeys.gemini?T.em:T.am)}>{apiKeys.gemini?"Connected":"Not set"}</span>
           </div>
           <input style={{...ip,marginBottom:6}} type={showKeys?"text":"password"} placeholder="Google AI API Key (from aistudio.google.com)" value={apiKeys.gemini} onChange={e=>setApiKeys(k=>({...k,gemini:e.target.value}))} />
           <div style={{display:"flex",gap:6}}>
-            <button style={{...bt(T.vi),padding:"5px 12px",fontSize:10}} onClick={testGemini}>Ã°ÂÂ§Âª Test Connection</button>
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 12px",fontSize:10,textDecoration:"none"}}>Get API Key Ã¢ÂÂ</a>
+            <button style={{...bt(T.vi),padding:"5px 12px",fontSize:10}} onClick={testGemini}>🧪 Test Connection</button>
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 12px",fontSize:10,textDecoration:"none"}}>Get API Key →</a>
           </div>
         </div>
 
         {/* Bland.ai */}
         <div style={{background:T.sa,borderRadius:8,padding:12,marginBottom:10}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-            <span style={{fontSize:16}}>Ã°ÂÂÂ</span>
-            <div style={{flex:1}}><div style={{fontSize:12.5,fontWeight:600}}>Bland.ai</div><div style={{fontSize:10.5,color:T.td}}>AI phone calls Ã¢ÂÂ $0.09/min. Sales agents can make calls directly.</div></div>
+            <span style={{fontSize:16}}>📞</span>
+            <div style={{flex:1}}><div style={{fontSize:12.5,fontWeight:600}}>Bland.ai</div><div style={{fontSize:10.5,color:T.td}}>AI phone calls — $0.09/min. Sales agents can make calls directly.</div></div>
             <span style={bdg(apiKeys.bland?T.em:T.am)}>{apiKeys.bland?"Connected":"Not set"}</span>
           </div>
           <input style={{...ip,marginBottom:6}} type={showKeys?"text":"password"} placeholder="Bland.ai API Key" value={apiKeys.bland} onChange={e=>setApiKeys(k=>({...k,bland:e.target.value}))} />
           <input style={{...ip,marginBottom:6}} placeholder="Your Bland phone number (+971...)" value={apiKeys.blandPhone} onChange={e=>setApiKeys(k=>({...k,blandPhone:e.target.value}))} />
           <div style={{display:"flex",gap:6}}>
-            <button style={{...bt(T.am),padding:"5px 12px",fontSize:10}} onClick={testBland}>Ã°ÂÂ§Âª Test</button>
-            <a href="https://app.bland.ai" target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 12px",fontSize:10,textDecoration:"none"}}>Get API Key Ã¢ÂÂ</a>
+            <button style={{...bt(T.am),padding:"5px 12px",fontSize:10}} onClick={testBland}>🧪 Test</button>
+            <a href="https://app.bland.ai" target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 12px",fontSize:10,textDecoration:"none"}}>Get API Key →</a>
           </div>
         </div>
 
-        {testResult&&<div style={{background:T.sa,borderRadius:6,padding:10,fontSize:12,color:testResult.startsWith("Ã¢ÂÂ")?T.em:testResult.startsWith("Ã¢ÂÂ")?T.rs:T.ts}}>{testResult}</div>}
+        {testResult&&<div style={{background:T.sa,borderRadius:6,padding:10,fontSize:12,color:testResult.startsWith("✅")?T.em:testResult.startsWith("❌")?T.rs:T.ts}}>{testResult}</div>}
       </div>
 
-      {/* Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ ALL API PROVIDERS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
+      {/* ═══ ALL API PROVIDERS ═══ */}
       <div style={cd}>
-        <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>Ã°ÂÂÂ All API Providers</div>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>📋 All API Providers</div>
         <div style={{fontSize:10.5,color:T.td,marginBottom:12}}>Add API keys to connect services. Agents will use the configured provider for each category.</div>
 
         {/* AI / LLM Providers */}
-        <div style={{fontSize:11.5,fontWeight:700,color:T.br,marginBottom:6}}>Ã°ÂÂ§Â  AI / Language Models</div>
-        {[{k:"anthropic",n:"Claude (Anthropic)",d:"Powers all agents. Sonnet 4 for tasks.",c:"$3/$15 per 1M tok",url:"https://console.anthropic.com",i:"Ã°ÂÂ§Â "},
-          {k:"openai",n:"OpenAI (GPT-4o / o1)",d:"Alternative LLM. GPT-4o for tasks, o1 for reasoning.",c:"$2.50/$10 per 1M tok",url:"https://platform.openai.com/api-keys",i:"Ã°ÂÂ¤Â"},
-          {k:"grok",n:"Grok (xAI)",d:"Real-time data, Twitter/X integration.",c:"$5/$15 per 1M tok",url:"https://console.x.ai",i:"Ã°ÂÂÂ®"},
-          {k:"deepseek",n:"DeepSeek",d:"Low-cost alternative. Good for high-volume tasks.",c:"$0.14/$0.28 per 1M tok",url:"https://platform.deepseek.com",i:"Ã°ÂÂÂ"},
-          {k:"groq",n:"Groq (Llama/Mixtral)",d:"Ultra-fast inference. Open-source models.",c:"Free tier / $0.05+",url:"https://console.groq.com",i:"Ã¢ÂÂ¡"},
+        <div style={{fontSize:11.5,fontWeight:700,color:T.br,marginBottom:6}}>🧠 AI / Language Models</div>
+        {[{k:"anthropic",n:"Claude (Anthropic)",d:"Powers all agents. Sonnet 4 for tasks.",c:"$3/$15 per 1M tok",url:"https://console.anthropic.com",i:"🧠"},
+          {k:"openai",n:"OpenAI (GPT-4o / o1)",d:"Alternative LLM. GPT-4o for tasks, o1 for reasoning.",c:"$2.50/$10 per 1M tok",url:"https://platform.openai.com/api-keys",i:"🤖"},
+          {k:"grok",n:"Grok (xAI)",d:"Real-time data, Twitter/X integration.",c:"$5/$15 per 1M tok",url:"https://console.x.ai",i:"🔮"},
+          {k:"deepseek",n:"DeepSeek",d:"Low-cost alternative. Good for high-volume tasks.",c:"$0.14/$0.28 per 1M tok",url:"https://platform.deepseek.com",i:"🌊"},
+          {k:"groq",n:"Groq (Llama/Mixtral)",d:"Ultra-fast inference. Open-source models.",c:"Free tier / $0.05+",url:"https://console.groq.com",i:"⚡"},
         ].map(p=><div key={p.k} style={{background:T.sa,borderRadius:7,padding:10,marginBottom:6}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
             <span style={{fontSize:14}}>{p.i}</span>
             <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600}}>{p.n}</div><div style={{fontSize:10,color:T.td}}>{p.d}</div></div>
             <span style={{fontSize:9,fontFamily:F.m,color:T.am}}>{p.c}</span>
-            <span style={bdg(apiKeys[p.k]?T.em:T.td)}>{apiKeys[p.k]?"Ã¢ÂÂ":"Ã¢ÂÂ"}</span>
+            <span style={bdg(apiKeys[p.k]?T.em:T.td)}>{apiKeys[p.k]?"✓":"—"}</span>
           </div>
           <div style={{display:"flex",gap:6}}>
             <input style={{...ip,flex:1}} type={showKeys?"text":"password"} placeholder={`${p.n} API Key`} value={apiKeys[p.k]||""} onChange={e=>setApiKeys(k=>({...k,[p.k]:e.target.value}))} />
-            <a href={p.url} target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 10px",fontSize:10,textDecoration:"none"}}>Get Key Ã¢ÂÂ</a>
+            <a href={p.url} target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 10px",fontSize:10,textDecoration:"none"}}>Get Key →</a>
           </div>
         </div>)}
 
         {/* Image & Video Generation */}
-        <div style={{fontSize:11.5,fontWeight:700,color:T.vi,marginTop:14,marginBottom:6}}>Ã°ÂÂÂ¨ Image & Video Generation</div>
-        {[{k:"gemini",n:"Google Gemini / Nano Banana",d:"AI image generation for posts, thumbnails, ads.",c:"Free/$20+",url:"https://aistudio.google.com/apikey",i:"Ã°ÂÂÂ¨"},
-          {k:"dalle",n:"DALL-E 3 (OpenAI)",d:"Premium image generation. Photorealistic, creative.",c:"$0.04/image",url:"https://platform.openai.com/api-keys",i:"Ã°ÂÂÂ¼Ã¯Â¸Â"},
-          {k:"midjourney",n:"Midjourney",d:"Best for artistic/creative imagery. Via Discord or API.",c:"$10/mo",url:"https://www.midjourney.com",i:"Ã°ÂÂÂ­"},
-          {k:"kling",n:"Kling 2.0 / 3.0",d:"AI video generation. Text-to-video, image-to-video.",c:"$0.10/video",url:"https://klingai.com",i:"Ã°ÂÂÂ¬"},
-          {k:"runway",n:"Runway Gen-3",d:"Professional AI video. Motion brush, text-to-video.",c:"$12/mo",url:"https://runwayml.com",i:"Ã°ÂÂÂ¥"},
-          {k:"heygen",n:"HeyGen",d:"AI avatars for video. Talking head, spokesperson.",c:"$24/mo",url:"https://heygen.com",i:"Ã°ÂÂÂ£Ã¯Â¸Â"},
-          {k:"elevenlabs",n:"ElevenLabs",d:"AI voice generation. Voiceovers, multilingual.",c:"$5/mo",url:"https://elevenlabs.io",i:"Ã°ÂÂÂ"},
+        <div style={{fontSize:11.5,fontWeight:700,color:T.vi,marginTop:14,marginBottom:6}}>🎨 Image & Video Generation</div>
+        {[{k:"gemini",n:"Google Gemini / Nano Banana",d:"AI image generation for posts, thumbnails, ads.",c:"Free/$20+",url:"https://aistudio.google.com/apikey",i:"🎨"},
+          {k:"dalle",n:"DALL-E 3 (OpenAI)",d:"Premium image generation. Photorealistic, creative.",c:"$0.04/image",url:"https://platform.openai.com/api-keys",i:"🖼️"},
+          {k:"midjourney",n:"Midjourney",d:"Best for artistic/creative imagery. Via Discord or API.",c:"$10/mo",url:"https://www.midjourney.com",i:"🎭"},
+          {k:"kling",n:"Kling 2.0 / 3.0",d:"AI video generation. Text-to-video, image-to-video.",c:"$0.10/video",url:"https://klingai.com",i:"🎬"},
+          {k:"runway",n:"Runway Gen-3",d:"Professional AI video. Motion brush, text-to-video.",c:"$12/mo",url:"https://runwayml.com",i:"🎥"},
+          {k:"heygen",n:"HeyGen",d:"AI avatars for video. Talking head, spokesperson.",c:"$24/mo",url:"https://heygen.com",i:"🗣️"},
+          {k:"elevenlabs",n:"ElevenLabs",d:"AI voice generation. Voiceovers, multilingual.",c:"$5/mo",url:"https://elevenlabs.io",i:"🔊"},
         ].map(p=><div key={p.k} style={{background:T.sa,borderRadius:7,padding:10,marginBottom:6}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
             <span style={{fontSize:14}}>{p.i}</span>
             <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600}}>{p.n}</div><div style={{fontSize:10,color:T.td}}>{p.d}</div></div>
             <span style={{fontSize:9,fontFamily:F.m,color:T.am}}>{p.c}</span>
-            <span style={bdg(apiKeys[p.k]?T.em:T.td)}>{apiKeys[p.k]?"Ã¢ÂÂ":"Ã¢ÂÂ"}</span>
+            <span style={bdg(apiKeys[p.k]?T.em:T.td)}>{apiKeys[p.k]?"✓":"—"}</span>
           </div>
           <div style={{display:"flex",gap:6}}>
             <input style={{...ip,flex:1}} type={showKeys?"text":"password"} placeholder={`${p.n} API Key`} value={apiKeys[p.k]||""} onChange={e=>setApiKeys(k=>({...k,[p.k]:e.target.value}))} />
-            <a href={p.url} target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 10px",fontSize:10,textDecoration:"none"}}>Get Key Ã¢ÂÂ</a>
+            <a href={p.url} target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 10px",fontSize:10,textDecoration:"none"}}>Get Key →</a>
           </div>
         </div>)}
 
         {/* Phone / Voice */}
-        <div style={{fontSize:11.5,fontWeight:700,color:T.am,marginTop:14,marginBottom:6}}>Ã°ÂÂÂ Phone / Voice Calls</div>
-        {[{k:"bland",n:"Bland.ai",d:"AI phone calls. Agent makes calls directly.",c:"$0.09/min",url:"https://app.bland.ai",i:"Ã°ÂÂÂ"},
-          {k:"vapi",n:"Vapi",d:"Voice AI platform. Custom voices, call flows.",c:"$0.05/min",url:"https://vapi.ai",i:"Ã°ÂÂÂ£Ã¯Â¸Â"},
-          {k:"twilio",n:"Twilio",d:"SMS + voice. Programmable calls, OTP, WhatsApp.",c:"$0.01/msg",url:"https://console.twilio.com",i:"Ã°ÂÂÂ±"},
-          {k:"retell",n:"Retell AI",d:"Conversational AI calls. Natural voices.",c:"$0.10/min",url:"https://retellai.com",i:"Ã¢ÂÂÃ¯Â¸Â"},
-          {k:"synthflow",n:"Synthflow",d:"No-code AI voice agents. Inbound + outbound.",c:"$29/mo",url:"https://synthflow.ai",i:"Ã°ÂÂÂÃ¯Â¸Â"},
+        <div style={{fontSize:11.5,fontWeight:700,color:T.am,marginTop:14,marginBottom:6}}>📞 Phone / Voice Calls</div>
+        {[{k:"bland",n:"Bland.ai",d:"AI phone calls. Agent makes calls directly.",c:"$0.09/min",url:"https://app.bland.ai",i:"📞"},
+          {k:"vapi",n:"Vapi",d:"Voice AI platform. Custom voices, call flows.",c:"$0.05/min",url:"https://vapi.ai",i:"🗣️"},
+          {k:"twilio",n:"Twilio",d:"SMS + voice. Programmable calls, OTP, WhatsApp.",c:"$0.01/msg",url:"https://console.twilio.com",i:"📱"},
+          {k:"retell",n:"Retell AI",d:"Conversational AI calls. Natural voices.",c:"$0.10/min",url:"https://retellai.com",i:"☎️"},
+          {k:"synthflow",n:"Synthflow",d:"No-code AI voice agents. Inbound + outbound.",c:"$29/mo",url:"https://synthflow.ai",i:"🎙️"},
         ].map(p=><div key={p.k} style={{background:T.sa,borderRadius:7,padding:10,marginBottom:6}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
             <span style={{fontSize:14}}>{p.i}</span>
             <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600}}>{p.n}</div><div style={{fontSize:10,color:T.td}}>{p.d}</div></div>
             <span style={{fontSize:9,fontFamily:F.m,color:T.am}}>{p.c}</span>
-            <span style={bdg(apiKeys[p.k]?T.em:T.td)}>{apiKeys[p.k]?"Ã¢ÂÂ":"Ã¢ÂÂ"}</span>
+            <span style={bdg(apiKeys[p.k]?T.em:T.td)}>{apiKeys[p.k]?"✓":"—"}</span>
           </div>
           <div style={{display:"flex",gap:6}}>
             <input style={{...ip,flex:1}} type={showKeys?"text":"password"} placeholder={`${p.n} API Key`} value={apiKeys[p.k]||""} onChange={e=>setApiKeys(k=>({...k,[p.k]:e.target.value}))} />
-            <a href={p.url} target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 10px",fontSize:10,textDecoration:"none"}}>Get Key Ã¢ÂÂ</a>
+            <a href={p.url} target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 10px",fontSize:10,textDecoration:"none"}}>Get Key →</a>
           </div>
         </div>)}
 
         {/* Email */}
-        <div style={{fontSize:11.5,fontWeight:700,color:T.br,marginTop:14,marginBottom:6}}>Ã°ÂÂÂ§ Email Providers</div>
-        {[{k:"gmail",n:"Gmail SMTP",d:"Enter App Password from Google Account > Security > 2FA > App Passwords",c:"Free",url:"https://console.cloud.google.com",i:"Ã¢ÂÂÃ¯Â¸Â"},
-          {k:"instantly",n:"Instantly.ai",d:"Cold email at scale Ã¢ÂÂ warm-up, rotation, sequences.",c:"$30/mo",url:"https://instantly.ai",i:"Ã°ÂÂÂ§"},
-          {k:"sendgrid",n:"SendGrid",d:"Transactional email API. 100/day free.",c:"Free/$20+",url:"https://sendgrid.com",i:"Ã°ÂÂÂ¤"},
-          {k:"mailgun",n:"Mailgun",d:"Developer-friendly email API.",c:"Free tier",url:"https://mailgun.com",i:"Ã°ÂÂÂ¨"},
-          {k:"resend",n:"Resend",d:"Modern email API for developers. React Email.",c:"Free/$20+",url:"https://resend.com",i:"Ã°ÂÂÂ¬"},
+        <div style={{fontSize:11.5,fontWeight:700,color:T.br,marginTop:14,marginBottom:6}}>📧 Email Providers</div>
+        {[{k:"gmail",n:"Gmail SMTP",d:"Enter App Password from Google Account > Security > 2FA > App Passwords",c:"Free",url:"https://console.cloud.google.com",i:"✉️"},
+          {k:"instantly",n:"Instantly.ai",d:"Cold email at scale — warm-up, rotation, sequences.",c:"$30/mo",url:"https://instantly.ai",i:"📧"},
+          {k:"sendgrid",n:"SendGrid",d:"Transactional email API. 100/day free.",c:"Free/$20+",url:"https://sendgrid.com",i:"📤"},
+          {k:"mailgun",n:"Mailgun",d:"Developer-friendly email API.",c:"Free tier",url:"https://mailgun.com",i:"📨"},
+          {k:"resend",n:"Resend",d:"Modern email API for developers. React Email.",c:"Free/$20+",url:"https://resend.com",i:"📬"},
         ].map(p=><div key={p.k} style={{background:T.sa,borderRadius:7,padding:10,marginBottom:6}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
             <span style={{fontSize:14}}>{p.i}</span>
             <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600}}>{p.n}</div><div style={{fontSize:10,color:T.td}}>{p.d}</div></div>
             <span style={{fontSize:9,fontFamily:F.m,color:p.c.includes("Free")?T.em:T.am}}>{p.c}</span>
-            <span style={bdg(apiKeys[p.k]?T.em:T.td)}>{apiKeys[p.k]?"Ã¢ÂÂ":"Ã¢ÂÂ"}</span>
+            <span style={bdg(apiKeys[p.k]?T.em:T.td)}>{apiKeys[p.k]?"✓":"—"}</span>
           </div>
           <div style={{display:"flex",gap:6}}>
             <input style={{...ip,flex:1}} type={showKeys?"text":"password"} placeholder={`${p.n} API Key`} value={apiKeys[p.k]||""} onChange={e=>setApiKeys(k=>({...k,[p.k]:e.target.value}))} />
-            <a href={p.url} target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 10px",fontSize:10,textDecoration:"none"}}>Get Key Ã¢ÂÂ</a>
+            <a href={p.url} target="_blank" rel="noreferrer" style={{...btG(T.sk),padding:"5px 10px",fontSize:10,textDecoration:"none"}}>Get Key →</a>
           </div>
         </div>)}
 
         {/* Social Media */}
-        <div style={{fontSize:11.5,fontWeight:700,color:T.pk,marginTop:14,marginBottom:6}}>Ã°ÂÂÂ± Social Media & Automation</div>
-        {[{k:"igraph",n:"Instagram Graph API",d:"Post content, read insights, manage comments.",c:"Free",url:"https://developers.facebook.com",i:"Ã°ÂÂÂ¸"},
-          {k:"linkedin_api",n:"LinkedIn Marketing API",d:"Post to company page, share articles.",c:"Free",url:"https://developer.linkedin.com",i:"Ã°ÂÂÂ¼"},
-          {k:"dripify",n:"Dripify",d:"LinkedIn automation Ã¢ÂÂ connections, messages, sequences.",c:"$59/mo",url:"https://dripify.io",i:"Ã°ÂÂÂ"},
-          {k:"phantombuster",n:"PhantomBuster",d:"LinkedIn/IG scraping + automation.",c:"$56/mo",url:"https://phantombuster.com",i:"Ã°ÂÂÂ»"},
-          {k:"manychat",n:"ManyChat",d:"Instagram + FB DM automation flows.",c:"$15/mo",url:"https://manychat.com",i:"Ã°ÂÂÂ¬"},
-          {k:"buffer",n:"Buffer",d:"Schedule posts across all platforms.",c:"Free/$6+",url:"https://buffer.com",i:"Ã°ÂÂÂ"},
-          {k:"tiktok_api",n:"TikTok Business API",d:"Post videos, read analytics.",c:"Free",url:"https://developers.tiktok.com",i:"Ã°ÂÂÂµ"},
-          {k:"youtube_api",n:"YouTube Data API v3",d:"Upload videos, manage channel.",c:"Free",url:"https://console.cloud.google.com",i:"Ã°ÂÂÂ¥"},
-          {k:"meta_api",n:"Meta Business Suite",d:"FB + IG combined management.",c:"Free",url:"https://business.facebook.com",i:"Ã°ÂÂÂ"},
+        <div style={{fontSize:11.5,fontWeight:700,color:T.pk,marginTop:14,marginBottom:6}}>📱 Social Media & Automation</div>
+        {[{k:"igraph",n:"Instagram Graph API",d:"Post content, read insights, manage comments.",c:"Free",url:"https://developers.facebook.com",i:"📸"},
+          {k:"linkedin_api",n:"LinkedIn Marketing API",d:"Post to company page, share articles.",c:"Free",url:"https://developer.linkedin.com",i:"💼"},
+          {k:"dripify",n:"Dripify",d:"LinkedIn automation — connections, messages, sequences.",c:"$59/mo",url:"https://dripify.io",i:"🔗"},
+          {k:"phantombuster",n:"PhantomBuster",d:"LinkedIn/IG scraping + automation.",c:"$56/mo",url:"https://phantombuster.com",i:"👻"},
+          {k:"manychat",n:"ManyChat",d:"Instagram + FB DM automation flows.",c:"$15/mo",url:"https://manychat.com",i:"💬"},
+          {k:"buffer",n:"Buffer",d:"Schedule posts across all platforms.",c:"Free/$6+",url:"https://buffer.com",i:"📅"},
+          {k:"tiktok_api",n:"TikTok Business API",d:"Post videos, read analytics.",c:"Free",url:"https://developers.tiktok.com",i:"🎵"},
+          {k:"youtube_api",n:"YouTube Data API v3",d:"Upload videos, manage channel.",c:"Free",url:"https://console.cloud.google.com",i:"🎥"},
+          {k:"meta_api",n:"Meta Business Suite",d:"FB + IG combined management.",c:"Free",url:"https://business.facebook.com",i:"📘"},
         ].map(p=><div key={p.k} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:`1px solid ${T.bd}`}}>
           <span style={{fontSize:13}}>{p.i}</span>
           <div style={{flex:1}}><div style={{fontSize:11.5,fontWeight:500}}>{p.n}</div><div style={{fontSize:10,color:T.td}}>{p.d}</div></div>
@@ -3135,10 +3219,10 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         </div>)}
 
         {/* Design */}
-        <div style={{fontSize:11.5,fontWeight:700,color:T.cy,marginTop:14,marginBottom:6}}>Ã°ÂÂÂ¨ Design</div>
-        {[{k:"canva",n:"Canva API / Connect",d:"Auto-generate branded designs, templates, export.",c:"$13/mo Pro",url:"https://www.canva.com/developers",i:"Ã°ÂÂÂÃ¯Â¸Â"},
-          {k:"figma",n:"Figma API",d:"Design automation, template management.",c:"Free/$15+",url:"https://www.figma.com/developers",i:"Ã¢ÂÂÃ¯Â¸Â"},
-          {k:"remove_bg",n:"Remove.bg",d:"AI background removal for product photos.",c:"Free/$9+",url:"https://www.remove.bg/api",i:"Ã¢ÂÂÃ¯Â¸Â"},
+        <div style={{fontSize:11.5,fontWeight:700,color:T.cy,marginTop:14,marginBottom:6}}>🎨 Design</div>
+        {[{k:"canva",n:"Canva API / Connect",d:"Auto-generate branded designs, templates, export.",c:"$13/mo Pro",url:"https://www.canva.com/developers",i:"🖌️"},
+          {k:"figma",n:"Figma API",d:"Design automation, template management.",c:"Free/$15+",url:"https://www.figma.com/developers",i:"✏️"},
+          {k:"remove_bg",n:"Remove.bg",d:"AI background removal for product photos.",c:"Free/$9+",url:"https://www.remove.bg/api",i:"✂️"},
         ].map(p=><div key={p.k} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:`1px solid ${T.bd}`}}>
           <span style={{fontSize:13}}>{p.i}</span>
           <div style={{flex:1}}><div style={{fontSize:11.5,fontWeight:500}}>{p.n}</div><div style={{fontSize:10,color:T.td}}>{p.d}</div></div>
@@ -3147,16 +3231,16 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         </div>)}
 
         {/* Infrastructure */}
-        <div style={{fontSize:11.5,fontWeight:700,color:T.sk,marginTop:14,marginBottom:6}}>Ã°ÂÂÂÃ¯Â¸Â Infrastructure & CRM</div>
-        {[{k:"supabase",n:"Supabase",d:"PostgreSQL + Auth + Storage + Realtime.",c:"Free/$25+",url:"https://supabase.com",i:"Ã°ÂÂÂÃ¯Â¸Â"},
-          {k:"vercel2",n:"Vercel",d:"Deploy frontend + serverless + cron jobs.",c:"Free/$20+",url:"https://vercel.com",i:"Ã¢ÂÂ²"},
-          {k:"hubspot",n:"HubSpot CRM",d:"Full CRM integration. Import/export leads.",c:"Free/$45+",url:"https://developers.hubspot.com",i:"Ã°ÂÂÂ¶"},
-          {k:"salesforce",n:"Salesforce",d:"Enterprise CRM sync.",c:"$25+/user",url:"https://developer.salesforce.com",i:"Ã¢ÂÂÃ¯Â¸Â"},
-          {k:"slack_hook",n:"Slack Webhook",d:"Agent notifications to your Slack.",c:"Free",url:"https://api.slack.com",i:"Ã°ÂÂÂ"},
-          {k:"zapier",n:"Zapier",d:"Connect 5000+ apps Ã¢ÂÂ no-code automation.",c:"Free/$20+",url:"https://zapier.com",i:"Ã¢ÂÂ¡"},
-          {k:"make",n:"Make (Integromat)",d:"Advanced workflow automation. Alternative to Zapier.",c:"Free/$9+",url:"https://make.com",i:"Ã°ÂÂÂ§"},
-          {k:"gcal",n:"Google Calendar",d:"Meeting booking, availability, scheduling.",c:"Free",url:"https://console.cloud.google.com",i:"Ã°ÂÂÂ"},
-          {k:"calendly",n:"Calendly",d:"Meeting scheduling links Ã¢ÂÂ embed in emails.",c:"Free/$10+",url:"https://calendly.com",i:"Ã°ÂÂÂÃ¯Â¸Â"},
+        <div style={{fontSize:11.5,fontWeight:700,color:T.sk,marginTop:14,marginBottom:6}}>🗄️ Infrastructure & CRM</div>
+        {[{k:"supabase",n:"Supabase",d:"PostgreSQL + Auth + Storage + Realtime.",c:"Free/$25+",url:"https://supabase.com",i:"🗄️"},
+          {k:"vercel2",n:"Vercel",d:"Deploy frontend + serverless + cron jobs.",c:"Free/$20+",url:"https://vercel.com",i:"▲"},
+          {k:"hubspot",n:"HubSpot CRM",d:"Full CRM integration. Import/export leads.",c:"Free/$45+",url:"https://developers.hubspot.com",i:"🔶"},
+          {k:"salesforce",n:"Salesforce",d:"Enterprise CRM sync.",c:"$25+/user",url:"https://developer.salesforce.com",i:"☁️"},
+          {k:"slack_hook",n:"Slack Webhook",d:"Agent notifications to your Slack.",c:"Free",url:"https://api.slack.com",i:"🔔"},
+          {k:"zapier",n:"Zapier",d:"Connect 5000+ apps — no-code automation.",c:"Free/$20+",url:"https://zapier.com",i:"⚡"},
+          {k:"make",n:"Make (Integromat)",d:"Advanced workflow automation. Alternative to Zapier.",c:"Free/$9+",url:"https://make.com",i:"🔧"},
+          {k:"gcal",n:"Google Calendar",d:"Meeting booking, availability, scheduling.",c:"Free",url:"https://console.cloud.google.com",i:"📅"},
+          {k:"calendly",n:"Calendly",d:"Meeting scheduling links — embed in emails.",c:"Free/$10+",url:"https://calendly.com",i:"🗓️"},
         ].map(p=><div key={p.k} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:`1px solid ${T.bd}`}}>
           <span style={{fontSize:13}}>{p.i}</span>
           <div style={{flex:1}}><div style={{fontSize:11.5,fontWeight:500}}>{p.n}</div><div style={{fontSize:10,color:T.td}}>{p.d}</div></div>
@@ -3167,19 +3251,19 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
 
       {/* CRM Export */}
       <div style={cd}>
-        <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Ã°ÂÂÂ¤ CRM Export</div>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>📤 CRM Export</div>
         <div style={{fontSize:12,color:T.ts,marginBottom:10}}>Export all leads as CSV for import into HubSpot, Salesforce, Zoho, or any CRM.</div>
-        <button style={bt(T.sk)} onClick={exportLeadsCSV}>Ã°ÂÂÂ¥ Export {leads.length} Leads as CSV</button>
+        <button style={bt(T.sk)} onClick={exportLeadsCSV}>📥 Export {leads.length} Leads as CSV</button>
       </div>
 
       {/* Automated Email Reports */}
       <div style={cd}>
-        <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Ã°ÂÂÂ§ Automated Email Reports</div>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>📧 Automated Email Reports</div>
         <div style={{fontSize:12,color:T.ts,marginBottom:10}}>Schedule daily/weekly reports to yourself or your team. Requires Gmail API connection after deployment.</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
           <div style={{background:T.sa,borderRadius:7,padding:10,border:`1px solid ${T.bd}`}}>
-            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Ã°ÂÂÂ Daily Report</div>
-            <div style={{fontSize:10.5,color:T.ts,marginBottom:6}}>KPI summary, pipeline changes, agent activity, new leads Ã¢ÂÂ sent at 8PM Dubai daily</div>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>📊 Daily Report</div>
+            <div style={{fontSize:10.5,color:T.ts,marginBottom:6}}>KPI summary, pipeline changes, agent activity, new leads — sent at 8PM Dubai daily</div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
               <input style={{...ip,flex:1,padding:"4px 8px",fontSize:10.5}} placeholder="Email (e.g. you@company.com)" />
             </div>
@@ -3189,8 +3273,8 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
             </div>
           </div>
           <div style={{background:T.sa,borderRadius:7,padding:10,border:`1px solid ${T.bd}`}}>
-            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Ã°ÂÂÂ Weekly Report</div>
-            <div style={{fontSize:10.5,color:T.ts,marginBottom:6}}>Revenue, deals closed, pipeline health, agent leaderboard, content performance Ã¢ÂÂ sent Sunday 6PM</div>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>📈 Weekly Report</div>
+            <div style={{fontSize:10.5,color:T.ts,marginBottom:6}}>Revenue, deals closed, pipeline health, agent leaderboard, content performance — sent Sunday 6PM</div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
               <input style={{...ip,flex:1,padding:"4px 8px",fontSize:10.5}} placeholder="Email (e.g. team@company.com)" />
             </div>
@@ -3205,11 +3289,11 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ TEAM VIEW Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ TEAM VIEW ═══
   function TeamView({role}){const def=ROLES[role];const team=agents.filter(a=>a.role===role);const c=T[def.color];
     const[showAdd,setShowAdd]=useState(false);
-    const[na,setNa]=useState({name:"",title:"",av:"Ã°ÂÂ¤Â",pic:"",eth:"",bg:""});
-    const addAg=()=>{if(!na.name)return;const newId=na.name.toLowerCase().replace(/\s/g,"-")+"-"+Date.now();setAgents(p=>[...p,{id:newId,name:na.name,role,title:na.title,av:na.av,pic:na.pic||`https://ui-avatars.com/api/?name=${encodeURIComponent(na.name)}&background=e8401e&color=fff&size=150&bold=true`,eth:na.eth,bg:na.bg,status:"active",config:agent_cfg_for_role(role)}]);setNa({name:"",title:"",av:"Ã°ÂÂ¤Â",pic:"",eth:"",bg:""});setShowAdd(false);};
+    const[na,setNa]=useState({name:"",title:"",av:"🤖",pic:"",eth:"",bg:""});
+    const addAg=()=>{if(!na.name)return;const newId=na.name.toLowerCase().replace(/\s/g,"-")+"-"+Date.now();setAgents(p=>[...p,{id:newId,name:na.name,role,title:na.title,av:na.av,pic:na.pic||`https://ui-avatars.com/api/?name=${encodeURIComponent(na.name)}&background=e8401e&color=fff&size=150&bold=true`,eth:na.eth,bg:na.bg,status:"active",config:agent_cfg_for_role(role)}]);setNa({name:"",title:"",av:"🤖",pic:"",eth:"",bg:""});setShowAdd(false);};
     return <div>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
         <span style={{fontSize:22}}>{def.icon}</span>
@@ -3221,8 +3305,8 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <input style={ip} placeholder="Full Name (e.g. Fatima Al-Zahra)" value={na.name} onChange={e=>setNa({...na,name:e.target.value})} />
           <input style={ip} placeholder="Title (e.g. Senior Closer)" value={na.title} onChange={e=>setNa({...na,title:e.target.value})} />
-          <input style={ip} placeholder="Avatar emoji (e.g. Ã°ÂÂÂ©Ã¢ÂÂÃ°ÂÂÂ¼)" value={na.av} onChange={e=>setNa({...na,av:e.target.value})} />
-          <input style={ip} placeholder="Photo URL (optional Ã¢ÂÂ auto-generated if blank)" value={na.pic} onChange={e=>setNa({...na,pic:e.target.value})} />
+          <input style={ip} placeholder="Avatar emoji (e.g. 👩‍💼)" value={na.av} onChange={e=>setNa({...na,av:e.target.value})} />
+          <input style={ip} placeholder="Photo URL (optional — auto-generated if blank)" value={na.pic} onChange={e=>setNa({...na,pic:e.target.value})} />
           <input style={ip} placeholder="Ethnicity (e.g. Emirati)" value={na.eth} onChange={e=>setNa({...na,eth:e.target.value})} />
         </div>
         <input style={{...ip,marginTop:8}} placeholder="Background & specialty (e.g. Luxury brands, 5yrs DIFC)" value={na.bg} onChange={e=>setNa({...na,bg:e.target.value})} />
@@ -3236,14 +3320,14 @@ return[...prev,..._uq];}return prev;});}}catch(_pe){console.log("parse err",_pe)
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-end"}}>
             <span style={{...bdg(a.status==="active"?T.em:T.am),fontSize:9,cursor:"pointer"}} onClick={()=>setAgents(p=>p.map(x=>x.id===a.id?{...x,status:x.status==="active"?"paused":"active"}:x))}><span style={dot(a.status==="active"?T.em:T.am)} /> {a.status==="active"?"Active":"Paused"}</span>
-            <button style={{background:"transparent",border:`1px solid ${T.bd}`,borderRadius:4,padding:"2px 6px",fontSize:9,color:T.ts,cursor:"pointer",fontFamily:F.d}} onClick={(e)=>{e.stopPropagation();const newName=prompt("Name for cloned agent:",`${a.name} (Copy)`);if(newName){const nid=newName.toLowerCase().replace(/\s/g,"-")+"-"+Date.now();setAgents(p=>[...p,{...a,id:nid,name:newName,pic:`https://ui-avatars.com/api/?name=${encodeURIComponent(newName)}&background=e8401e&color=fff&size=150&bold=true`}]);}}}>Ã°ÂÂÂ Clone</button>
+            <button style={{background:"transparent",border:`1px solid ${T.bd}`,borderRadius:4,padding:"2px 6px",fontSize:9,color:T.ts,cursor:"pointer",fontFamily:F.d}} onClick={(e)=>{e.stopPropagation();const newName=prompt("Name for cloned agent:",`${a.name} (Copy)`);if(newName){const nid=newName.toLowerCase().replace(/\s/g,"-")+"-"+Date.now();setAgents(p=>[...p,{...a,id:nid,name:newName,pic:`https://ui-avatars.com/api/?name=${encodeURIComponent(newName)}&background=e8401e&color=fff&size=150&bold=true`}]);}}}>📋 Clone</button>
           </div>
         </div>)}
       </div>
     </div>;
   }
 
-  // Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ RENDER Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+  // ═══ RENDER ═══
   const render=()=>{
     if(view==="dashboard")return <Dash/>;if(view==="leads")return <CRM/>;if(view==="pricing")return <PricingPage/>;
     if(view==="social")return <SocialPage/>;if(view==="campaigns")return <CampaignsPage/>;if(view==="scripts")return <ScriptsPage/>;if(view==="investors")return <InvestorPipeline/>;if(view==="followups")return <FollowUpPage/>;if(view==="social-outreach")return <SocialOutreachPage/>;if(view==="proposals")return <ProposalsPage/>;if(view==="integrations")return <IntPage/>;
@@ -3281,14 +3365,14 @@ input:focus,select:focus,textarea:focus{border-color:${T.br}!important;box-shado
   .kap-sidebar.open{transform:translateX(0)}
   .kap-main{padding:12px 8px!important}
   .kap-stats-text{display:none!important}
-  /* All grids Ã¢ÂÂ 2 columns on tablet */
+  /* All grids → 2 columns on tablet */
   .kap-main div[style*="gridTemplateColumns"]{grid-template-columns:1fr 1fr!important}
   .kap-main div[style*="repeat(5"]{grid-template-columns:repeat(2,1fr)!important}
   .kap-main div[style*="repeat(4"]{grid-template-columns:repeat(2,1fr)!important}
   .kap-main div[style*="repeat(6"]{grid-template-columns:repeat(3,1fr)!important}
-  /* 3-col grids Ã¢ÂÂ 1 col */
+  /* 3-col grids → 1 col */
   .kap-main div[style*="1fr 1fr 1fr"]{grid-template-columns:1fr!important}
-  /* 2-col grids Ã¢ÂÂ 1 col on tablet for skills/brand */
+  /* 2-col grids → 1 col on tablet for skills/brand */
   .kap-main div[style*="1fr 1fr"]{grid-template-columns:1fr!important}
   /* Tables scroll */
   .kap-main table{font-size:10px!important;display:block;overflow-x:auto;white-space:nowrap}
@@ -3327,7 +3411,7 @@ input:focus,select:focus,textarea:focus{border-color:${T.br}!important;box-shado
   .kap-main div[style*="alignItems:\"start\""]{flex-direction:column!important}
   /* Interaction form channel buttons small */
   .kap-main div[style*="gap:4"] button{padding:3px 7px!important;font-size:9.5px!important}
-  /* Grid span 2 Ã¢ÂÂ span 1 on mobile */
+  /* Grid span 2 → span 1 on mobile */
   .kap-main div[style*="gridColumn:\"span 2\""]{grid-column:span 1!important}
   /* Approached via banner */
   .kap-main div[style*="alignItems:\"center\",gap:8"]{flex-direction:row!important;flex-wrap:wrap!important}
@@ -3380,16 +3464,16 @@ input:focus,select:focus,textarea:focus{border-color:${T.br}!important;box-shado
     {/* HEADER */}
     <header style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderBottom:"1px solid #222",background:"#0a0a0a",flexShrink:0}} className="kap-header-gap">
       <div style={{display:"flex",alignItems:"center",gap:12}}>
-        {/* Hamburger Ã¢ÂÂ visible on mobile */}
-        <button onClick={()=>setMenuOpen(!menuOpen)} style={{background:"transparent",border:"none",color:"#fff",cursor:"pointer",fontSize:24,padding:"8px",display:"none",minWidth:44,minHeight:44}} className="kap-hamburger">{menuOpen?"Ã¢ÂÂ":"Ã¢ÂÂ°"}</button>
+        {/* Hamburger — visible on mobile */}
+        <button onClick={()=>setMenuOpen(!menuOpen)} style={{background:"transparent",border:"none",color:"#fff",cursor:"pointer",fontSize:24,padding:"8px",display:"none",minWidth:44,minHeight:44}} className="kap-hamburger">{menuOpen?"✕":"☰"}</button>
         <style>{`@media(max-width:768px){.kap-hamburger{display:block!important}}`}</style>
         <img src={LOGO_DARK} alt="Kapturise" style={{height:44,cursor:"pointer"}} onClick={()=>setView("dashboard")} onError={e=>{e.target.style.display="none";}} />
         <div style={{width:1,height:28,background:"#333"}} />
         <span style={{fontSize:13,fontWeight:700,color:"#fff"}}>AI Agents</span>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <span className="kap-stats-text" style={{fontSize:10.5,color:"#888"}}>{agents.length} agents ÃÂ· {leads.length} leads</span>
-        <button onClick={()=>setTheme(t=>t==="dark"?"light":"dark")} style={{background:"#1a1a1a",border:"1px solid #333",borderRadius:20,padding:"4px 12px",cursor:"pointer",fontSize:10.5,color:"#ccc",fontFamily:F.d,fontWeight:600}}>{theme==="dark"?"Ã¢ÂÂÃ¯Â¸Â Light":"Ã°ÂÂÂ Dark"}</button>
+        <span className="kap-stats-text" style={{fontSize:10.5,color:"#888"}}>{agents.length} agents · {leads.length} leads</span>
+        <button onClick={()=>setTheme(t=>t==="dark"?"light":"dark")} style={{background:"#1a1a1a",border:"1px solid #333",borderRadius:20,padding:"4px 12px",cursor:"pointer",fontSize:10.5,color:"#ccc",fontFamily:F.d,fontWeight:600}}>{theme==="dark"?"☀️ Light":"🌙 Dark"}</button>
       </div>
     </header>
 
@@ -3400,7 +3484,7 @@ input:focus,select:focus,textarea:focus{border-color:${T.br}!important;box-shado
       {/* SIDEBAR */}
       <nav className={`kap-sidebar${menuOpen?" open":""}`} style={{width:210,background:T.s,borderRight:`1px solid ${T.bd}`,display:"flex",flexDirection:"column",overflow:"auto",flexShrink:0}}>
         <div style={{padding:"11px 14px 4px",fontSize:8.5,fontWeight:700,textTransform:"uppercase",letterSpacing:".1em",color:T.td}}>Overview</div>
-        {[{id:"dashboard",l:"Command Center",i:"Ã¢ÂÂ"},{id:"leads",l:"Leads & CRM",i:"Ã¢ÂÂ"},{id:"followups",l:"Follow-Up Queue",i:"Ã°ÂÂÂ"},{id:"social-outreach",l:"Social Outreach",i:"Ã°ÂÂÂ¸"},{id:"proposals",l:"Proposals",i:"Ã°ÂÂÂ"},{id:"investors",l:"Investor Pipeline",i:"Ã°ÂÂÂ°"},{id:"pricing",l:"Service Pricing",i:"Ã°ÂÂÂ²"},{id:"campaigns",l:"Campaigns",i:"Ã°ÂÂÂ¯"},{id:"scripts",l:"Scripts & Templates",i:"Ã°ÂÂÂ"},{id:"social",l:"Social Accounts",i:"Ã°ÂÂÂ±"}].map(n=>
+        {[{id:"dashboard",l:"Command Center",i:"◆"},{id:"leads",l:"Leads & CRM",i:"◈"},{id:"followups",l:"Follow-Up Queue",i:"📅"},{id:"social-outreach",l:"Social Outreach",i:"📸"},{id:"proposals",l:"Proposals",i:"📄"},{id:"investors",l:"Investor Pipeline",i:"💰"},{id:"pricing",l:"Service Pricing",i:"💲"},{id:"campaigns",l:"Campaigns",i:"🎯"},{id:"scripts",l:"Scripts & Templates",i:"📝"},{id:"social",l:"Social Accounts",i:"📱"}].map(n=>
           <div key={n.id} style={nv(view===n.id,T.br)} onClick={()=>nav(n.id)}><span>{n.i}</span><span>{n.l}</span></div>)}
 
         <div style={{padding:"11px 14px 4px",fontSize:8.5,fontWeight:700,textTransform:"uppercase",letterSpacing:".1em",color:T.td}}>Agent Teams</div>
@@ -3414,15 +3498,15 @@ input:focus,select:focus,textarea:focus{border-color:${T.br}!important;box-shado
           </div>;})}
 
         <div style={{padding:"11px 14px 4px",fontSize:8.5,fontWeight:700,textTransform:"uppercase",letterSpacing:".1em",color:T.td}}>System</div>
-        <div style={nv(view==="integrations",T.ts)} onClick={()=>nav("integrations")}><span>Ã°ÂÂÂ</span><span>Integrations</span></div>
-        <div style={nv(view==="company",T.ts)} onClick={()=>nav("company")}><span>Ã°ÂÂÂ¢</span><span>Company Info</span></div>
-        <div style={nv(view==="brand",T.ts)} onClick={()=>nav("brand")}><span>Ã°ÂÂÂ¨</span><span>Brand Guidelines</span></div>
-        <div style={nv(view==="skills",T.ts)} onClick={()=>nav("skills")}><span>Ã°ÂÂ§Â </span><span>Skills & API Limits</span></div>
+        <div style={nv(view==="integrations",T.ts)} onClick={()=>nav("integrations")}><span>🔌</span><span>Integrations</span></div>
+        <div style={nv(view==="company",T.ts)} onClick={()=>nav("company")}><span>🏢</span><span>Company Info</span></div>
+        <div style={nv(view==="brand",T.ts)} onClick={()=>nav("brand")}><span>🎨</span><span>Brand Guidelines</span></div>
+        <div style={nv(view==="skills",T.ts)} onClick={()=>nav("skills")}><span>🧠</span><span>Skills & API Limits</span></div>
 
         <div style={{marginTop:"auto",padding:10,borderTop:`1px solid ${T.bd}`}}>
           {userEmail&&<div style={{fontSize:9,color:T.td,marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={userEmail}>{userEmail}</div>}
-          {onSignOut&&<div style={{fontSize:10,color:"#ff6b6b",cursor:"pointer",padding:"4px 0"}} onClick={onSignOut}>Ã¢ÂÂ» Sign Out</div>}
-          <div style={{fontSize:8.5,color:T.td,lineHeight:1.5,marginTop:4}}>Kapturise ÃÂ· Make it your moment.<br/>Claude AI ÃÂ· Dubai</div>
+          {onSignOut&&<div style={{fontSize:10,color:"#ff6b6b",cursor:"pointer",padding:"4px 0"}} onClick={onSignOut}>⏻ Sign Out</div>}
+          <div style={{fontSize:8.5,color:T.td,lineHeight:1.5,marginTop:4}}>Kapturise · Make it your moment.<br/>Claude AI · Dubai</div>
         </div>
       </nav>
 
