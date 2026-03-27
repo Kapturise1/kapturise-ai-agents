@@ -7,11 +7,7 @@ export async function POST(req) {
     if (!key) return Response.json({ error: "No API key. Set ANTHROPIC_API_KEY env var or provide in request." }, { status: 401 });
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-      },
+      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
       body: JSON.stringify(body),
     });
     const data = await res.text();
