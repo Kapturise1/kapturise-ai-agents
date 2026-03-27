@@ -1,5 +1,12 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "next build",
-  "outputDirectory": ".next"
+  "crons": [
+    {
+      "path": "/api/cron/agents",
+      "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/cron/followups",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }
