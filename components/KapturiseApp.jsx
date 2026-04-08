@@ -430,11 +430,11 @@ export default function App({onSignOut,userEmail}){
             const lead=ml[0];
             const leadEmail=lead.email||lead.contactEmail||"";
             const currentKeys=apiKeysRef.current||{};
-            const emailProviders=["resend","sendgrid","mailgun"];
+            const emailProviders=["gmail","resend","sendgrid","mailgun"];
             const configuredProvider=emailProviders.find(p=>currentKeys[p]);
             if(leadEmail&&configuredProvider){
               const{subject,body}=parseEmailFromAI(result);
-              const emailPayload={to:leadEmail,subject,body,provider:configuredProvider,apiKey:currentKeys[configuredProvider]};
+              const emailPayload={to:leadEmail,subject,body,provider:configuredProvider,apiKey:currentKeys[configuredProvider],from:"contact@kapturise.com"};
               fetch("/api/email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(emailPayload)})
                 .then(r=>r.json())
                 .then(data=>{
@@ -2983,12 +2983,24 @@ If a prospect replies on any channel, continue the conversation there. If they g
       }catch(err){setVibeImportStatus({type:"error",msg:err.message});}
     };
 
-    const handleVibeSearch=()=>{
-      if(!vibeSearchCriteria.industry&&!vibeSearchCriteria.location&&!vibeSearchCriteria.jobTitle){setVibeImportStatus({type:"error",msg:"Enter at least one search criteria"});return;}
+    const handleVibeSearch=async()=>{
+      if(!vibeSearchCriteria.industry&&!vibeSearchCriteria.location){setVibeImportStatus({type:"error",msg:"Enter industry and location"});return;}
       setVibeSearchLoading(true);
-      setVibeImportStatus({type:"loading",msg:`Searching Vibe...`});
-      // Trigger signal for parent Cowork session to run Vibe search
-      setTimeout(()=>{setVibeSearchLoading(false);setShowVibeSearch(false);setVibeSearchCriteria({industry:"",location:"",jobTitle:""});setVibeImportStatus(null);},1500);
+      setVibeImportStatus({type:"loading",msg:`🔍 Searching for ${vibeSearchCriteria.industry} businesses in ${vibeSearchCriteria.location}... This may take 15-30 seconds.`});
+      try{
+        const res=await fetch("/api/prospects/search",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({industry:vibeSearchCriteria.industry,location:vibeSearchCriteria.location,count:10})});
+        const data=await res.json();
+        if(data.success&&data.leads?.length>0){
+          const agentIds=agents.filter(a=>a.role==="sales").map(a=>a.id);
+          const newLeads=data.leads.map((l,i)=>({...l,id:`search-${Date.now()}-${i}`,assignedTo:agentIds[i%agentIds.length]||"omar",serviceType:l.ind?.toLowerCase().includes("food")||l.ind?.toLowerCase().includes("restaurant")?"food-photo":l.ind?.toLowerCase().includes("event")?"event":l.ind?.toLowerCase().includes("real")?"real-estate":"headshots"}));
+          setLeads(prev=>{const ex=new Set(prev.map(l=>l.name.toLowerCase()));const uniq=newLeads.filter(nl=>!ex.has(nl.name.toLowerCase()));return[...prev,...uniq];});
+          setVibeImportStatus({type:"success",msg:`✅ Found ${data.leads.length} businesses via ${data.method}! Added to CRM.`});
+          setTimeout(()=>{setVibeSearchLoading(false);setShowVibeSearch(false);setVibeImportStatus(null);},3000);
+        }else{
+          setVibeImportStatus({type:"error",msg:data.error||"No results found. Try different search terms."});
+          setVibeSearchLoading(false);
+        }
+      }catch(e){setVibeImportStatus({type:"error",msg:`Search failed: ${e.message}`});setVibeSearchLoading(false);}
     };
 
     const handleCSV=(e)=>{
