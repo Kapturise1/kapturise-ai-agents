@@ -4,7 +4,7 @@ export const maxDuration = 30;
 
 export async function POST(request) {
   try {
-    const { to, subject, body, provider, apiKey } = await request.json();
+    const { to, subject, body, provider, apiKey, from } = await request.json();
 
     if (!to || !subject || !body) {
       return NextResponse.json({ error: 'Missing required fields: to, subject, body' }, { status: 400 });
@@ -61,7 +61,28 @@ export async function POST(request) {
       return NextResponse.json({ success: true, id: data.id, provider: 'mailgun' });
     }
 
-    return NextResponse.json({ error: 'No email provider configured. Add a Resend, SendGrid, or Mailgun API key in Integrations.' }, { status: 400 });
+    if (provider === 'gmail' && apiKey) {
+      const nodemailer = (await import('nodemailer')).default;
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
+        auth: {
+          user: from || 'contact@kapturise.com',
+          pass: apiKey,
+        },
+      });
+      const mailOptions = {
+        from: from || 'contact@kapturise.com',
+        to,
+        subject,
+        html: body,
+      };
+      const info = await transporter.sendMail(mailOptions);
+      return NextResponse.json({ success: true, id: info.messageId, provider: 'gmail' });
+    }
+
+    return NextResponse.json({ error: 'No email provider configured. Add a Resend, SendGrid, Mailgun, or Gmail API key in Integrations.' }, { status: 400 });
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Failed to send email' }, { status: 500 });
   }
