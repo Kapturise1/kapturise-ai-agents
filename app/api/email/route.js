@@ -73,7 +73,7 @@ export async function POST(request) {
         },
       });
       const mailOptions = {
-        from: from || 'contact@kapturise.com',
+        from: `Kapturise <${from || 'contact@kapturise.com'}>`,
         to,
         subject,
         html: body,
