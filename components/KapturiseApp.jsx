@@ -340,7 +340,8 @@ export default function App({onSignOut,userEmail}){
         prompt=`You are ${ag.name}, ${ag.title} at Kapturise (Dubai creative media agency). Find 3 NEW business prospects in ${locs} in ${inds}. For EACH, provide: company name, contact person, title, industry, email pattern, Instagram handle, LinkedIn URL, estimated value in AED, and suggested Kapturise service.\nServices: ${pb}\nRespond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":15000,"suggestedService":"...","notes":"..."}]`;
         label=`Finding 3 prospects in ${inds.split(",")[0]}`;statKey="prospect";
       }else if(tType==="outreach"){
-        const el=leadsRef.current.filter(l=>l.assignedTo===agId&&["Research","First Contact","Warm-Up"].includes(l.stage));
+        // Skip leads that already have an email log (already contacted) — those go to follow-up instead
+        const el=leadsRef.current.filter(l=>l.assignedTo===agId&&["Research","Warm-Up"].includes(l.stage)||(l.stage==="First Contact"&&!(l.logs||[]).some(lg=>lg.type==="email")));
         if(el.length>0){const ld=el[Math.floor(Math.random()*el.length)];
           const pricing_details=getIndustryPricing(ld.ind);
           // Get the actual industry email template
@@ -356,12 +357,30 @@ export default function App({onSignOut,userEmail}){
         }
         statKey="email";
       }else if(tType==="follow-up"){
-        const fl=leadsRef.current.filter(l=>l.assignedTo===agId&&["Qualify","Discovery Call","Proposal"].includes(l.stage));
+        // Include "First Contact" leads that were emailed 3+ days ago (no reply yet)
+        const now=Date.now();const THREE_DAYS=3*24*60*60*1000;
+        const fl=leadsRef.current.filter(l=>{
+          if(l.assignedTo!==agId)return false;
+          // Standard follow-up stages
+          if(["Qualify","Discovery Call","Proposal"].includes(l.stage))return true;
+          // First Contact leads emailed 3+ days ago — time for follow-up
+          if(l.stage==="First Contact"&&(l.logs||[]).some(lg=>lg.type==="email")){
+            const emailLog=(l.logs||[]).filter(lg=>lg.type==="email").pop();
+            if(emailLog&&emailLog.date){
+              const logDate=new Date(emailLog.date+" 2026");
+              return !isNaN(logDate)&&(now-logDate.getTime())>=THREE_DAYS;
+            }
+            return true; // If date can't be parsed, include in follow-up
+          }
+          return false;
+        });
         if(fl.length>0){const ld=fl[0];
           const indTemplate=getTemplateForIndustry(ld.ind||"");
           const hasFlags=(ld.flags||[]).length>0;
+          const isFirstFollowUp=ld.stage==="First Contact";
           const flagContext=hasFlags?`\n\n⚠️ ESCALATION FLAGS: ${ld.flags.join(", ")}\nIMPORTANT: This lead has been flagged. If the client is negotiating price, do NOT offer discounts — instead say "I'll have our team review your requirements and get back with a custom proposal." If they need custom work, say "Let me connect you with our project lead to discuss your specific needs." Always escalate to human — never approve discounts or custom pricing yourself.`:"";
-          prompt=`You are ${ag.name} at Kapturise. Write a follow-up for:\n${ld.name} (${ld.contactName}), Stage: ${ld.stage}, Value: AED ${ld.val}, Industry: ${ld.ind||"general"}\nLast interaction: ${ld.logs?.[ld.logs.length-1]?.msg||"none"}\n\nUse pricing from the ${indTemplate.name} template:\n${indTemplate.body?.slice(0,500)||"Standard Kapturise pricing"}\n\nWrite a warm follow-up email that moves the deal forward. Reference specific services and pricing from the template above. Include the company profile link: https://kapturise-ai-agents.vercel.app/Kapturise-Company-Profile.pdf${flagContext}`;
+          const followUpContext=isFirstFollowUp?`\n\nThis is a FIRST FOLLOW-UP — they were sent an initial outreach email but haven't replied yet. Be warm, reference the previous email, and add a new angle or value proposition. Don't just repeat the same pitch. Try:\n- Reference a specific project or case study relevant to their industry\n- Mention a time-sensitive offer or upcoming availability\n- Ask a question to start a conversation\n- Keep it shorter than the original email`:"";
+          prompt=`You are ${ag.name} at Kapturise. Write a follow-up for:\n${ld.name} (${ld.contactName}), Stage: ${ld.stage}, Value: AED ${ld.val}, Industry: ${ld.ind||"general"}\nLast interaction: ${ld.logs?.[ld.logs.length-1]?.msg||"none"}\n\nUse pricing from the ${indTemplate.name} template:\n${indTemplate.body?.slice(0,500)||"Standard Kapturise pricing"}\n\nWrite a warm follow-up email that moves the deal forward. Reference specific services and pricing from the template above. Include the company profile link: https://kapturise-ai-agents.vercel.app/Kapturise-Company-Profile.pdf${flagContext}${followUpContext}`;
           label=`Following up with ${ld.name}`;
         }else{prompt=`Write 3 follow-up templates for prospects who haven't replied. Include company profile link: https://kapturise-ai-agents.vercel.app/Kapturise-Company-Profile.pdf`;label=`Creating follow-up templates`;}
         statKey="email";
