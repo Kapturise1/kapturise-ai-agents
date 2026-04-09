@@ -433,7 +433,9 @@ export default function App({onSignOut,userEmail}){
             const emailProviders=["gmail","resend","sendgrid","mailgun"];
             const configuredProvider=emailProviders.find(p=>currentKeys[p]);
             if(leadEmail&&configuredProvider){
-              const{subject,body}=parseEmailFromAI(result);
+              let{subject,body}=parseEmailFromAI(result);
+              body=body.replace(/\{\{agentName\}\}/g,ag.name||"Kapturise Team").replace(/\{\{agentTitle\}\}/g,ag.title||"Sales Representative");
+              subject=subject.replace(/\{\{agentName\}\}/g,ag.name||"Kapturise Team").replace(/\{\{agentTitle\}\}/g,ag.title||"Sales Representative");
               const emailPayload={to:leadEmail,subject,body,provider:configuredProvider,apiKey:currentKeys[configuredProvider],from:"contact@kapturise.com"};
               fetch("/api/email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(emailPayload)})
                 .then(r=>r.json())
