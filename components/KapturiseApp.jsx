@@ -6,7 +6,7 @@ const LOGO_DARK = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABDMAAAKKCAYAAAA
 const TH={dark:{bg:"#060610",s:"#0a0a16",sa:"#0e0e1c",cd:"#101024",ch:"#16162a",bd:"#1c1c36",tx:"#eeeef8",ts:"#9e9ebb",td:"#58586f",br:"#e8401e",bl:"#ff5a36",em:"#10b981",sk:"#38bdf8",vi:"#8b5cf6",am:"#f59e0b",pk:"#ec4899",cy:"#06b6d4",li:"#84cc16",rs:"#f43f5e"},light:{bg:"#f4f4f9",s:"#fff",sa:"#eeeef5",cd:"#fff",ch:"#f7f7fc",bd:"#dddde8",tx:"#181830",ts:"#55557a",td:"#8888a0",br:"#e8401e",bl:"#ff5a36",em:"#059669",sk:"#0284c7",vi:"#7c3aed",am:"#d97706",pk:"#db2777",cy:"#0891b2",li:"#65a30d",rs:"#e11d48"}};
 const F={d:"'Sora',sans-serif",m:"'IBM Plex Mono',monospace"};
 const CTX=`Kapturise — Dubai creative production. "Make it your moment." Services: Photography, Videography, Talent, Content Creation, Social Media Management. Markets: Real Estate, F&B, Events, Corporates, Ecommerce, Food Aggregators. Pitch monthly retainers.`;
-async function callAI(s,m){try{const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:s,messages:[{role:"user",content:m}],max_tokens:8192,stream:true})});if(!r.ok){const err=await r.text();try{const j=JSON.parse(err);return`API Error (${r.status}): ${j.error?.message||err.slice(0,200)}`;}catch(_){return`API Error (${r.status}): ${err.slice(0,200)}`;}}const reader=r.body.getReader();const decoder=new TextDecoder();let result="";let buf="";while(true){const{done,value}=await reader.read();if(done)break;buf+=decoder.decode(value,{stream:true});const lines=buf.split("\n");buf=lines.pop()||"";for(const line of lines){if(line.startsWith("data: ")){const data=line.slice(6);if(data==="[DONE]")continue;try{const evt=JSON.parse(data);if(evt.type==="content_block_delta"&&evt.delta?.text){result+=evt.delta.text;}}catch(_){}}}}return result||"No response generated. Try again.";}catch(e){return`Connection Error: ${e.message}. Check your internet connection.`;}}
+async function callAI(s,m){const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:s,messages:[{role:"user",content:m}],max_tokens:8192,stream:true})});if(!r.ok){const err=await r.text();let msg;try{const j=JSON.parse(err);msg=j.error?.message||err.slice(0,200);}catch(_){msg=err.slice(0,200);}throw new Error(`API Error (${r.status}): ${msg}`);}const reader=r.body.getReader();const decoder=new TextDecoder();let result="";let buf="";while(true){const{done,value}=await reader.read();if(done)break;buf+=decoder.decode(value,{stream:true});const lines=buf.split("\n");buf=lines.pop()||"";for(const line of lines){if(line.startsWith("data: ")){const data=line.slice(6);if(data==="[DONE]")continue;try{const evt=JSON.parse(data);if(evt.type==="content_block_delta"&&evt.delta?.text){result+=evt.delta.text;}}catch(_){}}}}if(!result)throw new Error("No response generated. Try again.");return result;}
 const STO={async get(k,fb){try{const r=await window.storage.get(k);return r?JSON.parse(r.value):fb;}catch{return fb;}},async set(k,v){try{await window.storage.set(k,JSON.stringify(v));}catch(e){console.error(e);}}};
 function usePersist(k,init){const[d,setD]=useState(init);const[ok,setOk]=useState(false);useEffect(()=>{STO.get(k,init).then(v=>{setD(v);setOk(true);});},[]);const upd=useCallback(fn=>{setD(p=>{const n=typeof fn==="function"?fn(p):fn;STO.set(k,n);return n;});},[k]);return[d,upd,ok];}
 
@@ -409,29 +409,33 @@ export default function App({onSignOut,userEmail}){
       setAgents(prev=>prev.map(a=>a.id===agId?{...a,autoStatus:`🔄 ${label}...`,autoProgress:"50%"}:a));
       try{
         const result=await callAI(buildSys(ag),prompt);
-        setAgents(prev=>prev.map(a=>{
-          if(a.id!==agId)return a;
-          const st={...(a.autoStats||{prospects:0,emails:0,dms:0,calls:0})};
-          if(statKey==="prospect")st.prospects+=(tType==="prospect"?3:1);
-          if(statKey==="email")st.emails++;
-          if(statKey==="dm")st.dms++;
-          if(statKey==="call")st.calls++;
-          return{...a,autoStatus:`✅ ${label}`,autoProgress:"100%",autoCycle:(a.autoCycle||0)+1,autoStats:st};
-        }));
-        addLog(agId,`${ag.name}: ${label} ✓`);
 
-        // Parse prospects into real leads
+        // Parse prospects into real leads FIRST so we know actual count
+        let actualProspects=0;
         if(tType==="prospect"){
           const newL=parseProspects(result,agId,ag);
           if(newL.length>0){
             setLeads(prev=>{
               const ex=new Set(prev.map(l=>l.name.toLowerCase()));
               const uniq=newL.filter(nl=>!ex.has(nl.name.toLowerCase()));
-              if(uniq.length>0){addLog(agId,`${ag.name}: Added ${uniq.length} new leads to CRM ✓`);return[...prev,...uniq];}
+              if(uniq.length>0){actualProspects=uniq.length;addLog(agId,`${ag.name}: Added ${uniq.length} new leads to CRM ✓`);return[...prev,...uniq];}
               return prev;
             });
           }
+          if(actualProspects===0){addLog(agId,`${ag.name}: ${label} — no new leads parsed`);}
         }
+
+        // Only increment stats based on real results
+        setAgents(prev=>prev.map(a=>{
+          if(a.id!==agId)return a;
+          const st={...(a.autoStats||{prospects:0,emails:0,dms:0,calls:0})};
+          if(statKey==="prospect"&&actualProspects>0)st.prospects+=actualProspects;
+          if(statKey==="email")st.emails++;
+          if(statKey==="dm")st.dms++;
+          if(statKey==="call")st.calls++;
+          return{...a,autoStatus:`✅ ${label}`,autoProgress:"100%",autoCycle:(a.autoCycle||0)+1,autoStats:st,_doneAt:Date.now()};
+        }));
+        if(tType!=="prospect")addLog(agId,`${ag.name}: ${label} ✓`);
 
         // Log outreach/follow-up to matched leads
         if(["outreach","follow-up"].includes(tType)){
@@ -508,8 +512,8 @@ export default function App({onSignOut,userEmail}){
           }
         }
       }catch(e){
-        setAgents(prev=>prev.map(a=>a.id===agId?{...a,autoStatus:`❌ ${(e.message||"Error").slice(0,50)}`,autoProgress:"0%"}:a));
-        addLog(agId,`${ag.name}: Error — ${(e.message||"unknown").slice(0,40)}`);
+        setAgents(prev=>prev.map(a=>a.id===agId?{...a,autoStatus:`❌ ${(e.message||"Error").slice(0,80)}`,autoProgress:"0%",_errorAt:Date.now()}:a));
+        addLog(agId,`❌ ${ag.name}: Error — ${(e.message||"unknown").slice(0,100)}`);
       }
       autoRunningRef.current=false;
     },45000);
@@ -519,6 +523,12 @@ export default function App({onSignOut,userEmail}){
       setAgents(prev=>prev.map(a=>{
         if(!a.autoMode)return a;
         if(a.autoStatus?.startsWith("🔄"))return a;// Currently running
+        // Keep ❌ errors visible for 60 seconds so users can see failures
+        if(a.autoStatus?.startsWith("❌")){
+          if((a._errorAt||0)+60000>Date.now())return a;
+          // After 60s, show waiting state instead of fake activity
+          return{...a,autoStatus:"⏳ Waiting for next cycle...",_errorAt:0};
+        }
         const acts=AUTO_ACTS[a.role]||AUTO_ACTS.sales;
         const act=acts[Math.floor(Math.random()*acts.length)];
         // Keep ✅ for 20 seconds before cycling
@@ -526,7 +536,7 @@ export default function App({onSignOut,userEmail}){
           if((a._doneAt||0)+20000>Date.now())return a;
           return{...a,autoStatus:act.s+"...",_doneAt:0};
         }
-        if(a.autoStatus?.startsWith("❌"))return{...a,autoStatus:act.s+"..."};
+        if(a.autoStatus?.startsWith("⏳"))return{...a,autoStatus:act.s+"..."};
         return{...a,autoStatus:act.s+"..."};
       }));
     },10000);
@@ -598,6 +608,7 @@ export default function App({onSignOut,userEmail}){
 
   // ═══ AI PROSPECT SCORER ═══
   async function scoreProspect(prospect){
+    try{
     const wonDeals=leads.filter(l=>l.stage==="Close");
     const wonProfile=wonDeals.length>0?`Past won deals:\n${wonDeals.map(w=>`${w.name}(${w.ind}) ${w.val}AED ${w.serviceType}`).join("\n")}`:"No past data yet.";
     const r=await callAI(
@@ -605,6 +616,7 @@ export default function App({onSignOut,userEmail}){
       `${wonProfile}\n\nScore this new prospect:\nCompany: ${prospect.name||prospect.handle}\nIndustry: ${prospect.industry||prospect.ind}\nFollowers: ${prospect.followers||"unknown"}\nContent quality: ${prospect.contentQuality||"unknown"}\nBudget signals: ${prospect.budgetSignals||"unknown"}\n\nRespond ONLY with JSON: {"score":75,"reasoning":"...","suggestedService":"...","urgency":"high/medium/low","suggestedApproach":"..."}`
     );
     try{return JSON.parse(r.replace(/```json|```/g,"").trim());}catch{return{score:50,reasoning:"Unable to analyze",suggestedService:"general",urgency:"medium",suggestedApproach:"Standard outreach"};}
+    }catch(e){return{score:50,reasoning:`Error: ${e.message}`,suggestedService:"general",urgency:"medium",suggestedApproach:"Standard outreach"};}
   }
 
   // ═══ AUTO FOLLOW-UP CREATOR ═══
@@ -2259,14 +2271,14 @@ If a prospect replies on any channel, continue the conversation there. If they g
 
     const scrapeURL=async()=>{
       if(!nc.url)return;setScraping(true);setScrapeResult(null);
-      const r=await callAI(`You are a web research agent for Kapturise.`,`Research this event/exhibition URL and extract all exhibitors/companies: ${nc.url}\n\nFor each: company name, industry, booth/stand info if available, and which Kapturise service to pitch. Format as numbered list.`);
-      setScrapeResult(r);setScraping(false);
+      try{const r=await callAI(`You are a web research agent for Kapturise.`,`Research this event/exhibition URL and extract all exhibitors/companies: ${nc.url}\n\nFor each: company name, industry, booth/stand info if available, and which Kapturise service to pitch. Format as numbered list.`);
+      setScrapeResult(r);}catch(e){setScrapeResult(`Error: ${e.message}`);}finally{setScraping(false);}
     };
 
     const generateField=async(field,prompt)=>{
       setGenLoading(field);
-      const r=await callAI(`You are a campaign strategist for Kapturise. ${CTX}`,prompt);
-      setNc(prev=>({...prev,[field]:r}));setGenLoading(null);
+      try{const r=await callAI(`You are a campaign strategist for Kapturise. ${CTX}`,prompt);
+      setNc(prev=>({...prev,[field]:r}));}catch(e){setNc(prev=>({...prev,[field]:`Error: ${e.message}`}));}finally{setGenLoading(null);}
     };
 
     const toggleAgent=(agId)=>setNc(prev=>({...prev,assignedAgents:prev.assignedAgents.includes(agId)?prev.assignedAgents.filter(id=>id!==agId):[...prev.assignedAgents,agId]}));
@@ -2484,12 +2496,12 @@ If a prospect replies on any channel, continue the conversation there. If they g
     const generateProposal=async()=>{
       const lead=leads.find(l=>l.id==selLead);if(!lead||!template)return;
       setGenLoading(true);
-      const svc=pricing.find(p=>p.id===lead.serviceType);
+      try{const svc=pricing.find(p=>p.id===lead.serviceType);
       const r=await callAI(
         `You are a proposal writer for Kapturise. ${CTX} Write professional, persuasive proposals.`,
         `Fill in this proposal template for ${lead.name}.\n\nClient: ${lead.name} (${lead.ind})\nContact: ${lead.contactName}, ${lead.contactTitle}\nRequirements: ${lead.requirements||lead.notes}\nService: ${svc?.name||"General"} — Base: ${svc?.base||0} ${svc?.unit||"AED"}\nDeal value: ${lead.val} AED\n\nTemplate sections to fill:\n${template.sections.map(s=>`## ${s.title}\n${s.body}`).join("\n\n")}\n\nReplace all {variables} with real values for this client. Make it persuasive. Keep the structure.`
       );
-      setGenResult(r);setGenLoading(false);
+      setGenResult(r);}catch(e){setGenResult(`Error: ${e.message}`);}finally{setGenLoading(false);}
     };
 
     const handleUpload=(e)=>{
@@ -2704,15 +2716,15 @@ If a prospect replies on any channel, continue the conversation there. If they g
 
     const detectIndustry=async(handle)=>{
       setAiLoading(handle);
-      const r=await callAI(`You are a social media analyst. Analyze Instagram accounts and determine the business industry.`,
+      try{const r=await callAI(`You are a social media analyst. Analyze Instagram accounts and determine the business industry.`,
         `Analyze this Instagram account: ${handle}\n\nBased on the handle name, determine:\n1. Most likely business type/industry (F&B, Real Estate, Events, Ecommerce, Lifestyle, Corporate, etc.)\n2. Likely business name\n3. Which Kapturise service would be most relevant\n4. A personalized opening DM\n\nRespond in JSON: {"industry":"...","businessName":"...","service":"...","openingDM":"..."}`);
       try{
         const clean=r.replace(/```json|```/g,"").trim();
         const parsed=JSON.parse(clean);
         setNs(p=>({...p,industry:parsed.industry||"",businessName:parsed.businessName||handle}));
-        setAiLoading(null);
         return parsed;
-      }catch{setAiLoading(null);return null;}
+      }catch{return null;}
+      }catch(e){return null;}finally{setAiLoading(null);}
     };
 
     const addAccount=()=>{if(!ns.handle)return;
@@ -2949,8 +2961,8 @@ If a prospect replies on any channel, continue the conversation there. If they g
                   <div style={{fontSize:11.5,color:T.ts,marginTop:2}}>{ix.summary}</div>
                   {ix.transcript&&openInvTr[`${inv.id}-${j}`]&&<div style={{background:T.bg,border:`1px solid ${T.bd}`,borderRadius:6,padding:8,marginTop:4,fontSize:11,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.5,maxHeight:250,overflow:"auto"}}>{ix.transcript}</div>}
                   {ix.transcript&&ix.transcript.length>100&&!ix.aiSummary&&<button style={{...btG(T.vi),padding:"2px 6px",fontSize:9,marginTop:3}} onClick={async()=>{
-                    const sum=await callAI("Summarize this investor meeting in 3 bullet points: key discussions, investor interest level, next steps.","Transcript:\n"+ix.transcript);
-                    updInv(inv.id,"interactions",(inv.interactions||[]).map((x,k)=>k===j?{...x,aiSummary:sum}:x));
+                    try{const sum=await callAI("Summarize this investor meeting in 3 bullet points: key discussions, investor interest level, next steps.","Transcript:\n"+ix.transcript);
+                    updInv(inv.id,"interactions",(inv.interactions||[]).map((x,k)=>k===j?{...x,aiSummary:sum}:x));}catch(e){updInv(inv.id,"interactions",(inv.interactions||[]).map((x,k)=>k===j?{...x,aiSummary:`Error: ${e.message}`}:x));}
                   }}>🤖 AI Summary</button>}
                   {ix.aiSummary&&<div style={{background:`${T.vi}10`,borderRadius:4,padding:6,marginTop:3,fontSize:10.5,color:T.vi,lineHeight:1.5}}>🤖 {ix.aiSummary}</div>}
                 </div>
@@ -3309,8 +3321,8 @@ If a prospect replies on any channel, continue the conversation there. If they g
                   </div>}
                   {/* AI Summarize button for long transcripts */}
                   {log.transcript&&log.transcript.length>100&&!log.aiSummary&&<button style={{...btG(T.vi),padding:"2px 8px",fontSize:9,marginTop:4}} onClick={async(e)=>{e.stopPropagation();
-                    const sum=await callAI("Summarize this conversation in 2-3 bullet points. Focus on: key decisions, action items, next steps, objections raised.","Transcript:\n"+log.transcript);
-                    setLeads(p=>p.map(ld=>ld.id===l.id?{...ld,logs:(ld.logs||[]).map((lg,j)=>j===i?{...lg,aiSummary:sum}:lg)}:ld));
+                    try{const sum=await callAI("Summarize this conversation in 2-3 bullet points. Focus on: key decisions, action items, next steps, objections raised.","Transcript:\n"+log.transcript);
+                    setLeads(p=>p.map(ld=>ld.id===l.id?{...ld,logs:(ld.logs||[]).map((lg,j)=>j===i?{...lg,aiSummary:sum}:lg)}:ld));}catch(err){setLeads(p=>p.map(ld=>ld.id===l.id?{...ld,logs:(ld.logs||[]).map((lg,j)=>j===i?{...lg,aiSummary:`Error: ${err.message}`}:lg)}:ld));}
                   }}>🤖 AI Summarize</button>}
                   {log.aiSummary&&<div style={{background:`${T.vi}10`,borderRadius:5,padding:8,marginTop:4,fontSize:11,color:T.vi,lineHeight:1.5}}>
                     <div style={{fontSize:9,fontWeight:600,marginBottom:2}}>🤖 AI Summary</div>{log.aiSummary}
@@ -3353,8 +3365,8 @@ If a prospect replies on any channel, continue the conversation there. If they g
         :type==="linkedin"?"Write 3 LinkedIn posts for Kapturise. Mix: portfolio, insight, thought leadership. Include hashtags."
         :type==="instagram"?"Write 3 IG DM templates. Casual Dubai tone. Under 3 sentences. {name}, {company}. Different industries."
         :"Write 2 cold call scripts for Kapturise. Under 2 min. Opening, qualify, handle objections, CTA.";
-      const r=await callAI(`Sales copywriter for Kapturise. ${CTX}`,prompt);
-      setNewScript(p=>({...p,body:r,name:`AI Generated ${new Date().toLocaleDateString()}`}));setGenLoading(false);};
+      try{const r=await callAI(`Sales copywriter for Kapturise. ${CTX}`,prompt);
+      setNewScript(p=>({...p,body:r,name:`AI Generated ${new Date().toLocaleDateString()}`}));}catch(e){setNewScript(p=>({...p,body:`Error: ${e.message}`}));}finally{setGenLoading(false);}};
 
     const AssignSection=({scriptId,assigned,campaigns:campAssigned,onToggleAgent,onToggleCampaign})=><div style={{marginTop:8}}>
       <div style={{fontSize:10,color:T.td,marginBottom:4}}>👥 Assign to Agents:</div>
