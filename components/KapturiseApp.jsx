@@ -227,25 +227,25 @@ export default function App({onSignOut,userEmail}){
       sales:[
         {s:"Researching prospects on LinkedIn",t:"prospect"},{s:"Sending LinkedIn connection requests",t:"connect"},
         {s:"Drafting personalized Instagram DM",t:"dm"},{s:"Commenting on prospect's post",t:"comment"},
-        {s:"Sending cold email with portfolio",t:"email"},{s:"Qualifying inbound lead",t:"qualify"},
+        {s:"Sending cold email with portfolio",t:"outreach"},{s:"Qualifying inbound lead",t:"qualify"},
         {s:"Scheduling discovery call",t:"call"},{s:"Updating CRM pipeline",t:"lead"},
         {s:"Sending portfolio via Instagram DM",t:"dm"},{s:"Making warm outreach call",t:"call"},
         {s:"Analyzing prospect's content",t:"prospect"},{s:"Replying to Instagram story",t:"dm"},
-        {s:"Sending LinkedIn follow-up message",t:"connect"},{s:"Sending voice note to warm lead",t:"dm"},
-        {s:"Researching industry news for outreach angles",t:"prospect"},{s:"Preparing proposal for qualified lead",t:"email"},
+        {s:"Sending LinkedIn follow-up message",t:"follow-up"},{s:"Sending voice note to warm lead",t:"dm"},
+        {s:"Researching industry news for outreach angles",t:"prospect"},{s:"Preparing proposal for qualified lead",t:"outreach"},
       ],
       content:[
         {s:"Creating Instagram carousel post",t:"content"},{s:"Writing LinkedIn thought leadership article",t:"content"},
         {s:"Generating AI image with Nano Banana",t:"content"},{s:"Scheduling social media posts",t:"content"},
-        {s:"Editing video for TikTok/Reels",t:"content"},{s:"Writing email newsletter",t:"email"},
+        {s:"Editing video for TikTok/Reels",t:"content"},{s:"Writing email newsletter",t:"content"},
         {s:"Analyzing content performance metrics",t:"prospect"},{s:"Curating trending hashtag strategy",t:"content"},
         {s:"Creating behind-the-scenes content",t:"content"},{s:"Designing story templates",t:"content"},
       ],
       investor:[
-        {s:"Researching investor fund thesis",t:"prospect"},{s:"Drafting investor outreach email",t:"email"},
+        {s:"Researching investor fund thesis",t:"prospect"},{s:"Drafting investor outreach email",t:"outreach"},
         {s:"Preparing pitch deck updates",t:"content"},{s:"Analyzing fund portfolio fit",t:"prospect"},
         {s:"Scheduling investor call",t:"call"},{s:"Updating investor pipeline stage",t:"lead"},
-        {s:"Preparing due diligence documents",t:"content"},{s:"Following up on term sheet",t:"email"},
+        {s:"Preparing due diligence documents",t:"content"},{s:"Following up on term sheet",t:"follow-up"},
       ],
     };
     const ids=autoKey.split(",");
@@ -438,7 +438,7 @@ export default function App({onSignOut,userEmail}){
         if(tType!=="prospect")addLog(agId,`${ag.name}: ${label} ✓`);
 
         // Log outreach/follow-up to matched leads
-        if(["outreach","follow-up"].includes(tType)){
+        if(["outreach","follow-up","dm","connect","call"].includes(tType)){
           const ml=leadsRef.current.filter(l=>l.assignedTo===agId);
           if(ml.length>0){
             const tLog={type:"note",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),msg:`🤖 Auto: ${label}`,summary:label,transcript:result.slice(0,2000)};
@@ -484,7 +484,7 @@ export default function App({onSignOut,userEmail}){
         }
 
         // ── ESCALATION DETECTION — flag leads needing human intervention ──
-        if(result&&["outreach","follow-up","qualify"].includes(tType)){
+        if(result&&["outreach","follow-up","dm","connect","call","qualify"].includes(tType)){
           const lower=result.toLowerCase();
           const escalationTriggers=[
             {pattern:/discount|lower price|too expensive|budget.{0,20}(tight|limited|small)|can.{0,10}you.{0,10}(reduce|lower|drop)|cheaper|negotiate.{0,10}price/i,flag:"💰 Price Negotiation",reason:"Client is negotiating on price — needs human approval for discounts"},
