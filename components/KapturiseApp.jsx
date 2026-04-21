@@ -257,7 +257,7 @@ export default function App({onSignOut,userEmail}){
         const jm=aiOut.match(/\[[\s\S]*?\]/);
         if(jm){
           JSON.parse(jm[0]).forEach((p,i)=>{
-            res.push({id:Date.now()+i+Math.floor(Math.random()*9999),name:p.company||p.name||p.handle||`Prospect ${i+1}`,website:p.website||"",ind:p.industry||p.ind||ag.config?.targeting?.industries?.[0]||"General",stage:"Research",contactName:p.contact||p.person||p.contactName||"",contactTitle:p.title||p.contactTitle||"",email:p.email||"",phone:p.phone||"",ig:p.instagram||p.ig||p.handle||"",linkedin:p.linkedin||"",val:parseInt(p.estimatedValue||p.val)||5000,notes:p.notes||`AI-discovered by ${ag.name}`,approachedVia:{channel:"AI Prospecting",handle:"",firstContact:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})},src:`${ag.name} (AI Auto)`,srcType:"ai-prospecting",assignedTo:agId,serviceType:p.suggestedService||p.serviceType||"",logs:[{type:"note",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),msg:`🤖 AI-discovered by ${ag.name}`,summary:`Auto-prospecting discovery`,transcript:aiOut.slice(0,1500)}]});
+            const rawVal=parseInt(p.estimatedValue||p.val)||5000;const cappedVal=Math.min(rawVal,8000);res.push({id:Date.now()+i+Math.floor(Math.random()*9999),name:p.company||p.name||p.handle||`Prospect ${i+1}`,website:p.website||"",ind:p.industry||p.ind||ag.config?.targeting?.industries?.[0]||"General",stage:"Research",contactName:p.contact||p.person||p.contactName||"",contactTitle:p.title||p.contactTitle||"",email:p.email||"",phone:p.phone||"",ig:p.instagram||p.ig||p.handle||"",linkedin:p.linkedin||"",val:cappedVal,notes:p.notes||`AI-discovered by ${ag.name}`,createdAt:Date.now(),contactedAt:null,approachedVia:{channel:"AI Prospecting",handle:"",firstContact:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})},src:`${ag.name} (AI Auto)`,srcType:"ai-prospecting",assignedTo:agId,serviceType:p.suggestedService||p.serviceType||"",logs:[{type:"note",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),msg:`🤖 AI-discovered by ${ag.name}`,summary:`Auto-prospecting discovery`,transcript:aiOut.slice(0,1500)}]});
           });
         }
       }catch(e){}
@@ -337,7 +337,7 @@ export default function App({onSignOut,userEmail}){
       let prompt,label,statKey;
 
       if(tType==="prospect"){
-        prompt=`You are ${ag.name}, ${ag.title} at Kapturise (Dubai creative media agency). Find 3 NEW business prospects in ${locs} in ${inds}. For EACH, provide: company name, contact person, title, industry, email pattern, Instagram handle, LinkedIn URL, estimated value in AED, and suggested Kapturise service.\nServices: ${pb}\nRespond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":15000,"suggestedService":"...","notes":"..."}]`;
+        prompt=`You are ${ag.name}, ${ag.title} at Kapturise (Dubai creative media agency). Find 3 NEW REAL business prospects in ${locs} in ${inds}. These must be REAL companies that actually exist — use your knowledge of businesses in Dubai/UAE. For EACH, provide: company name, contact person (use a realistic title like Marketing Manager, not a made-up name), title, industry, their likely email format (e.g. info@company.com), Instagram handle if known, LinkedIn URL if known, estimated project value in AED (use realistic Kapturise pricing: 2000-5000 for single shoots, 3000-8000 for packages), and suggested Kapturise service.\nServices: ${pb}\nRespond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":3500,"suggestedService":"...","notes":"..."}]`;
         label=`Finding 3 prospects in ${inds.split(",")[0]}`;statKey="prospect";
       }else if(tType==="outreach"){
         // Skip leads that already have an email log (already contacted) — those go to follow-up instead
@@ -465,7 +465,7 @@ export default function App({onSignOut,userEmail}){
                 .then(data=>{
                   if(data.success||data.messageId){
                     const emailLog={type:"email",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),msg:`📧 AI outreach sent to ${leadEmail}`,summary:`Email: ${subject}`,transcript:`To: ${leadEmail}\nSubject: ${subject}\n\n${body}`};
-                    setLeads(prev=>prev.map(l=>l.id===lead.id?{...l,logs:[...(l.logs||[]),emailLog]}:l));
+                    setLeads(prev=>prev.map(l=>l.id===lead.id?{...l,contactedAt:l.contactedAt||Date.now(),stage:l.stage==="Research"?"First Contact":l.stage,logs:[...(l.logs||[]),emailLog]}:l));
                     addLog(agId,`📧 ${ag.name}: Email sent to ${lead.name} (${leadEmail}) ✓`);
                   }else{
                     const errorLog={type:"note",date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),msg:`⚠️ Email send failed: ${data.error||"Unknown error"}`,summary:"Email send error"};
@@ -676,7 +676,7 @@ export default function App({onSignOut,userEmail}){
   // ═══ CRM EXPORT ═══
   function exportLeadsCSV(){
     const headers=["Company","Industry","Stage","Contact","Title","Email","Phone","Instagram","Website","Value","Assigned Agent","Service","Source"];
-    const rows=leads.map(l=>[l.name,l.ind,l.stage,l.contactName,l.contactTitle,l.email,l.phone,l.ig,l.website,l.val,agents.find(a=>a.id===l.assignedTo)?.name||"",pricing.find(p=>p.id===l.serviceType)?.name||"",l.src].map(v=>`"${(v||"").toString().replace(/"/g,'""')}"`).join(","));
+    const rows=leads.map(l=>[l.name,l.ind,l.stage,l.contactName,l.contactTitle,l.email,l.phone,l.ig,l.website,l.val,agents.find(a=>a.id===l.assignedTo)?.name||"",pricing.find(p=>p.id===l.serviceType)?.name||"",l.src,l.createdAt?new Date(l.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"",l.contactedAt?new Date(l.contactedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):""].map(v=>`"${(v||"").toString().replace(/"/g,'""')}"`).join(","));
     const csv=[headers.join(","),...rows].join("\n");
     const blob=new Blob([csv],{type:"text/csv"});
     const url=URL.createObjectURL(blob);
@@ -3199,6 +3199,8 @@ If a prospect replies on any channel, continue the conversation there. If they g
               <div className="kap-lead-detail" style={{display:"flex",gap:12,marginTop:4,flexWrap:"wrap",fontSize:11.5,color:T.ts}}>
                 <span>👤 {l.contactName} — {l.contactTitle}</span>
                 <span>🏢 {l.ind}</span>
+                {l.createdAt&&<span>📅 Added: {new Date(l.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>}
+                {l.contactedAt&&<span>📧 Contacted: {new Date(l.contactedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>}
               </div>
             </div>
             <div style={{textAlign:"right"}}>
