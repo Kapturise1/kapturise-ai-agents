@@ -117,8 +117,10 @@ function parseEmailFromAI(result) {
 }
 
 // ── Call Google Gemini AI (FREE tier only — $0 cost) ──
-// Each model has its own separate free quota (~1,500 req/day each)
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash-8b'];
+// Free tier: gemini-2.5-flash = 20 RPD, 5 RPM
+// We skip 2 out of 3 cron runs to stay under 20/day (288 runs/day ÷ 3 = 96… still too many)
+// Actually skip 14 out of 15 runs → ~19 runs/day at 5-min intervals
+const GEMINI_MODELS = ['gemini-2.5-flash-preview-04-17', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
 
 async function callAI(system, prompt) {
   const geminiKey = process.env.GEMINI_API_KEY;
@@ -243,6 +245,21 @@ export async function GET(request) {
   //   }
   // }
 
+  // ── Throttle: only run AI every 15th invocation (~75 min at 5-min cron) ──
+  // Gemini free tier = 20 RPD, so we need ≤19 AI calls/day
+  const now = new Date();
+  const minuteOfDay = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const shouldRun = minuteOfDay % 75 < 5; // Run once every ~75 minutes (within a 5-min window)
+  if (!shouldRun) {
+    return Response.json({
+      ok: true,
+      skipped: true,
+      reason: 'throttled',
+      message: `Waiting for next run window (every ~75 min to stay under free quota). Next window at minute ${Math.ceil(minuteOfDay / 75) * 75} of day.`,
+      timestamp: now.toISOString(),
+    });
+  }
+
   const supabase = getSupabase();
   if (!supabase) {
     return Response.json({ error: 'Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_SERVICE_ROLE_KEY).' }, { status: 500 });
@@ -282,8 +299,7 @@ export async function GET(request) {
 
     // ── 4. Determine which agent + task to run ──
     // Use minute-of-day to rotate through agents (1 agent per cron invocation)
-    const now = new Date();
-    const minuteOfDay = now.getUTCHours() * 60 + now.getUTCMinutes();
+    // (now and minuteOfDay already declared above in throttle check)
     const agentIndex = minuteOfDay % agents.length;
     const agent = agents[agentIndex];
 
