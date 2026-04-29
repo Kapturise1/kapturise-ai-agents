@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getTemplateForIndustry, renderTemplate } from '../../../../lib/emailTemplates';
 
 export const maxDuration = 60; // Vercel free tier = 60s max
+export const dynamic = 'force-dynamic'; // Prevent Next.js from prerendering this route
 
 // ── Supabase client (server-side, uses env vars) ──
 function getSupabase() {
