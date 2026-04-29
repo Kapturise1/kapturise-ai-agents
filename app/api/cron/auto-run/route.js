@@ -116,15 +116,13 @@ function parseEmailFromAI(result) {
   return { subject: subject || '(No subject parsed)', body: body || result.substring(0, 2000) };
 }
 
-// ── Call Google Gemini AI (FREE tier) ──
-// Models tried in order: gemini-2.0-flash → gemini-2.0-flash-lite (separate quotas)
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+// ── Call Google Gemini AI (FREE tier only — $0 cost) ──
+// Each model has its own separate free quota (~1,500 req/day each)
+const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
 
 async function callAI(system, prompt) {
   const geminiKey = process.env.GEMINI_API_KEY;
-  if (!geminiKey) throw new Error('No GEMINI_API_KEY env var set — add your free Gemini key at console.cloud.google.com');
-
-  let lastError = null;
+  if (!geminiKey) throw new Error('No GEMINI_API_KEY env var set — get a free key at ai.google.dev');
 
   for (const model of GEMINI_MODELS) {
     const controller = new AbortController();
@@ -146,15 +144,11 @@ async function callAI(system, prompt) {
       );
       clearTimeout(timeout);
 
-      if (response.status === 429) {
-        lastError = new Error(`Rate limited on ${model}`);
-        lastError.isRateLimit = true;
-        continue; // Try next model
-      }
+      if (response.status === 429) continue; // Rate limited → try next model
 
       if (!response.ok) {
         const err = await response.text();
-        throw new Error(`Gemini API error ${response.status}: ${err.slice(0, 300)}`);
+        throw new Error(`Gemini ${model} error ${response.status}: ${err.slice(0, 200)}`);
       }
 
       const data = await response.json();
@@ -162,13 +156,12 @@ async function callAI(system, prompt) {
     } catch (e) {
       clearTimeout(timeout);
       if (e.name === 'AbortError') throw new Error('AI call timed out');
-      if (e.isRateLimit) { lastError = e; continue; }
       throw e;
     }
   }
 
-  // All models rate-limited
-  const err = new Error('All Gemini models rate-limited — will retry next cron cycle');
+  // All 3 free models rate-limited — skip this cycle gracefully
+  const err = new Error('All Gemini free models rate-limited — will retry next cron cycle');
   err.isRateLimit = true;
   throw err;
 }
