@@ -636,13 +636,15 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
 
   } catch (error) {
     // Log error
-    const supabaseForLog = getSupabase();
-    if (supabaseForLog) {
-      await supabaseForLog.from('activity_logs').insert({
-        agent_id: null,
-        message: `[CRON ERROR] ${error.message}`,
-      }).catch(() => {});
-    }
+    try {
+      const supabaseForLog = getSupabase();
+      if (supabaseForLog) {
+        await supabaseForLog.from('activity_logs').insert({
+          agent_id: null,
+          message: `[CRON ERROR] ${error.message}`,
+        });
+      }
+    } catch (_) { /* ignore logging errors */ }
 
     return Response.json({
       ok: false,
