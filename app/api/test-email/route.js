@@ -1,6 +1,6 @@
 // Temporary test endpoint — sends a sample event coverage email
 import nodemailer from 'nodemailer';
-import { EMAIL_TEMPLATES } from '@/lib/emailTemplates';
+import { EMAIL_TEMPLATES, renderTemplate } from '@/lib/emailTemplates';
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -15,14 +15,20 @@ export async function GET(request) {
     auth: { user, pass },
   });
 
-  const html = EMAIL_TEMPLATES.events(to === 'habeeb@kapturise.com' ? 'Kapturise Team' : 'Valued Client', 'Event Manager');
+  const template = EMAIL_TEMPLATES.events;
+  const { subject, body } = renderTemplate(template, {
+    contactName: 'Event Manager',
+    company: 'Your Company',
+    agentName: 'Kapturise Team',
+    agentTitle: 'Sales',
+  });
 
   try {
     const info = await transporter.sendMail({
       from: `"Kapturise" <${user}>`,
       to,
-      subject: '🎬 Event Coverage & AI Video Production — Kapturise',
-      html,
+      subject,
+      html: body,
     });
     return Response.json({ ok: true, messageId: info.messageId });
   } catch (e) {
