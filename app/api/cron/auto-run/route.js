@@ -218,18 +218,18 @@ function buildSystemPrompt(agent) {
 // MAIN CRON HANDLER
 // ══════════════════════════════════════════
 export async function GET(request) {
-  // ── Auth check — skip during testing, enable later with CRON_SECRET ──
-  // To lock this down: set CRON_SECRET env var and pass ?token=<secret> in cron URL
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    const { searchParams } = new URL(request.url);
-    const tokenParam = searchParams.get('token');
-    const vercelCron = request.headers.get('x-vercel-cron'); // Vercel's own cron header
-    if (!vercelCron && authHeader !== `Bearer ${cronSecret}` && tokenParam !== cronSecret) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // ── Auth check disabled for free tier testing ──
+  // To re-enable: uncomment the block below and set CRON_SECRET env var
+  // const cronSecret = process.env.CRON_SECRET;
+  // if (cronSecret) {
+  //   const authHeader = request.headers.get('authorization');
+  //   const { searchParams } = new URL(request.url);
+  //   const tokenParam = searchParams.get('token');
+  //   const vercelCron = request.headers.get('x-vercel-cron');
+  //   if (!vercelCron && authHeader !== `Bearer ${cronSecret}` && tokenParam !== cronSecret) {
+  //     return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  //   }
+  // }
 
   const supabase = getSupabase();
   if (!supabase) {
