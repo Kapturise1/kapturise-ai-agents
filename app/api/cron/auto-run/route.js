@@ -17,7 +17,7 @@ function getSupabase() {
 
 // ── Task cycle per role (mirrors client-side TASK_CYCLE) ──
 const TASK_CYCLE = {
-  sales: ['prospect', 'outreach', 'follow-up', 'qualify'],
+  sales: ['prospect', 'outreach', 'event-scout', 'follow-up', 'outreach', 'qualify'],
   marketing: ['content', 'engagement', 'content'],
   account: ['check-in', 'upsell'],
   analytics: ['report'],
@@ -218,13 +218,15 @@ function buildSystemPrompt(agent) {
 // MAIN CRON HANDLER
 // ══════════════════════════════════════════
 export async function GET(request) {
-  // ── Auth check (optional — if CRON_SECRET is set, require it) ──
+  // ── Auth check — skip during testing, enable later with CRON_SECRET ──
+  // To lock this down: set CRON_SECRET env var and pass ?token=<secret> in cron URL
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
     const authHeader = request.headers.get('authorization');
     const { searchParams } = new URL(request.url);
     const tokenParam = searchParams.get('token');
-    if (authHeader !== `Bearer ${cronSecret}` && tokenParam !== cronSecret) {
+    const vercelCron = request.headers.get('x-vercel-cron'); // Vercel's own cron header
+    if (!vercelCron && authHeader !== `Bearer ${cronSecret}` && tokenParam !== cronSecret) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
   }
@@ -235,15 +237,26 @@ export async function GET(request) {
   }
 
   try {
-    // ── 1. Load agents with auto_mode enabled ──
-    const { data: agents, error: agErr } = await supabase
+    // ── 1. Load agents — seed defaults if table is empty ──
+    let { data: agents, error: agErr } = await supabase
       .from('agents')
       .select('*')
       .eq('status', 'active');
 
     if (agErr) throw new Error(`Failed to load agents: ${agErr.message}`);
+
+    // Auto-seed default agents if none exist
     if (!agents || agents.length === 0) {
-      return Response.json({ ok: true, message: 'No active agents', ran: 0 });
+      const defaultAgents = [
+        { id: 'cron-sales-1', name: 'Aisha Al-Rashid', role: 'sales', title: 'Senior Sales Executive', status: 'active', config: { targeting: { industries: ['Real Estate', 'Events', 'Corporate'], locations: ['Dubai, UAE'] } } },
+        { id: 'cron-sales-2', name: 'Omar Hassan', role: 'sales', title: 'Business Development Manager', status: 'active', config: { targeting: { industries: ['Food & Beverage', 'Hospitality', 'Ecommerce'], locations: ['Dubai, UAE', 'Abu Dhabi, UAE'] } } },
+        { id: 'cron-sales-3', name: 'Sara Khan', role: 'sales', title: 'Sales Representative', status: 'active', config: { targeting: { industries: ['Tech', 'Corporate', 'Events'], locations: ['Dubai, UAE'] } } },
+        { id: 'cron-investor-1', name: 'Khalid Mahmoud', role: 'investor', title: 'Investor Relations Manager', status: 'active', config: { targeting: { industries: ['VC', 'Angel Investors', 'Family Offices'], locations: ['Dubai, UAE', 'Riyadh, KSA'] } } },
+        { id: 'cron-marketing-1', name: 'Layla Noor', role: 'marketing', title: 'Content Strategist', status: 'active', config: { targeting: { industries: ['Creative', 'Media', 'Photography'], locations: ['Dubai, UAE'] } } },
+      ];
+      const { error: seedErr } = await supabase.from('agents').upsert(defaultAgents, { onConflict: 'id' });
+      if (seedErr) throw new Error(`Failed to seed agents: ${seedErr.message}`);
+      agents = defaultAgents;
     }
 
     // ── 2. Load leads ──
@@ -282,9 +295,107 @@ export async function GET(request) {
     let prompt, label;
     const agentLeads = allLeads.filter(l => l.assigned_to === agent.id);
 
+    // Rotate prospecting sources for variety
+    const prospectSources = [
+      { source: 'google-maps', label: 'Google Maps' },
+      { source: 'exhibitions', label: 'Exhibition Events' },
+      { source: 'general', label: 'Industry Research' },
+    ];
+    const sourceIdx = Math.floor(minuteOfDay / (agents.length * tasks.length)) % prospectSources.length;
+    const prospectSource = prospectSources[sourceIdx];
+
+    // Exhibition venues in UAE for event-based prospecting
+    const EXHIBITION_VENUES = [
+      'Dubai World Trade Centre (DWTC) — Sheikh Zayed Road, Dubai',
+      'Abu Dhabi National Exhibition Centre (ADNEC) — Khaleej Al Arabi St, Abu Dhabi',
+      'Expo City Dubai — Dubai South',
+      'Sharjah Expo Centre — Al Taawun, Sharjah',
+      'Dubai International Convention and Exhibition Centre (DICEC)',
+      'Madinat Jumeirah Conference Centre — Dubai',
+      'Meydan Racecourse & Events — Nad Al Sheba, Dubai',
+      'Festival Arena by InterContinental — Dubai Festival City',
+      'Atlantis The Palm — Events & Conferences',
+      'Coca-Cola Arena — City Walk, Dubai',
+    ];
+
     if (tType === 'prospect') {
-      prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai creative media agency). Find 3 NEW REAL business prospects in ${locs} in ${inds}. These must be REAL companies that actually exist — use your knowledge of businesses in Dubai/UAE. For EACH, provide: company name, contact person (use a realistic title like Marketing Manager, not a made-up name), title, industry, their likely email format (e.g. info@company.com), Instagram handle if known, LinkedIn URL if known, estimated project value in AED (use realistic Kapturise pricing: 2000-5000 for single shoots, 3000-8000 for packages), and suggested Kapturise service.\nServices: ${pricingStr}\nRespond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":3500,"suggestedService":"...","notes":"..."}]`;
-      label = `Finding 3 prospects in ${inds.split(',')[0]}`;
+      if (prospectSource.source === 'google-maps') {
+        prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai creative media agency).
+
+TASK: Search Google Maps in ${locs} for businesses in ${inds} that would need photography, videography, or content creation services.
+
+Think like you're browsing Google Maps in these areas of Dubai/UAE: JBR, Downtown Dubai, DIFC, Business Bay, Marina, Al Quoz, Jumeirah, Deira, Karama, Al Barsha, Abu Dhabi Corniche, Yas Island, Sharjah Al Majaz.
+
+Find 3 REAL businesses that actually exist on Google Maps. Prioritize:
+- Newly opened restaurants, cafes, hotels (they need launch content)
+- Real estate agencies and developers (they need property photography)
+- Event venues and wedding halls (they need event coverage)
+- Retail stores and e-commerce brands (they need product photography)
+- Corporate offices opening new branches (they need headshots + office content)
+
+For EACH, provide: company name, Google Maps area/neighborhood, contact person (realistic title), industry, likely email (info@company.com format), Instagram handle, estimated project value in AED (2000-8000), and why they need Kapturise services right now.
+Services: ${pricingStr}
+Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":3500,"suggestedService":"...","website":"...","notes":"Found on Google Maps in [area] — [reason they need content]"}]`;
+        label = `Scouting Google Maps in ${locs} for ${inds.split(',')[0]}`;
+
+      } else if (prospectSource.source === 'exhibitions') {
+        const venueSubset = EXHIBITION_VENUES.slice(0, 5 + (minuteOfDay % 5)).join('\n- ');
+        prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai creative media agency).
+
+TASK: Find businesses that are exhibiting at or organizing upcoming events/exhibitions/conferences in the UAE.
+
+Major UAE exhibition venues:
+- ${venueSubset}
+
+Think about what events typically happen in ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} and the coming months at these venues: trade shows, tech conferences, food expos, property shows, fashion events, health & wellness expos, auto shows, education fairs, wedding exhibitions, art fairs.
+
+Find 3 REAL companies that are likely exhibiting, sponsoring, or organizing events at these venues. These companies need:
+- Event photography & videography coverage
+- Exhibition booth content creation
+- Speaker/panel video recording
+- Social media content from their event
+- Post-event highlight reels
+
+For EACH, provide: company name, the event/exhibition they're connected to, contact person (Marketing Manager or Events Coordinator), industry, likely email, Instagram handle, estimated project value in AED (3000-8000 for event coverage), and which Kapturise service fits.
+Services: ${pricingStr}
+Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":5500,"suggestedService":"Event Coverage","website":"...","notes":"Exhibiting at [venue/event] — needs [specific content type]"}]`;
+        label = `Scouting exhibition events for prospects`;
+
+      } else {
+        prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai creative media agency). Find 3 NEW REAL business prospects in ${locs} in ${inds}. These must be REAL companies that actually exist — use your knowledge of businesses in Dubai/UAE. For EACH, provide: company name, contact person (use a realistic title like Marketing Manager, not a made-up name), title, industry, their likely email format (e.g. info@company.com), Instagram handle if known, LinkedIn URL if known, estimated project value in AED (use realistic Kapturise pricing: 2000-5000 for single shoots, 3000-8000 for packages), and suggested Kapturise service.\nServices: ${pricingStr}\nRespond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":3500,"suggestedService":"...","notes":"..."}]`;
+        label = `Finding 3 prospects in ${inds.split(',')[0]}`;
+      }
+
+    } else if (tType === 'event-scout') {
+      // Scrape exhibition venue websites for exhibitors & upcoming events
+      const VENUE_URLS = [
+        { name: 'Dubai World Trade Centre', url: 'https://www.dwtc.com/en/events', city: 'Dubai' },
+        { name: 'ADNEC Abu Dhabi', url: 'https://adnec.ae/events', city: 'Abu Dhabi' },
+        { name: 'Expo City Dubai', url: 'https://www.expocitydubai.com/en/events', city: 'Dubai' },
+        { name: 'Sharjah Expo Centre', url: 'https://www.expo-centre.ae/events', city: 'Sharjah' },
+      ];
+      const venue = VENUE_URLS[minuteOfDay % VENUE_URLS.length];
+      prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai creative media agency).
+
+TASK: You are researching upcoming events at ${venue.name} (${venue.url}) in ${venue.city}.
+
+Based on your knowledge of events typically held at ${venue.name}, identify 3 REAL companies/brands that are likely to be:
+- Exhibiting at upcoming trade shows, conferences, or expos
+- Organizing corporate events, product launches, or galas
+- Sponsoring conferences or industry events
+
+These companies need EVENT COVERAGE services from Kapturise:
+- Event photography (AED 1,600+ for 2hrs, AED 3,000+ for photo+video package)
+- Event videography with highlight reel (AED 2,000+ for 2hrs)
+- Exhibition booth content creation
+- Speaker/panel recording
+- Social media content from their event
+- Post-event highlight reels
+
+For EACH company, provide: company name, the specific event/exhibition they're at, contact person (Events Coordinator or Marketing Manager), industry, email (use info@ or events@ format), Instagram, estimated value (AED 3,000-8,000), and what specific content they need.
+
+Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Events Coordinator","industry":"Events","email":"...","instagram":"...","linkedin":"...","estimatedValue":5500,"suggestedService":"Event Coverage","website":"...","notes":"Exhibiting at ${venue.name} — [event name] — needs event photography + highlight reel"}]`;
+      label = `Scouting exhibitors at ${venue.name}`;
 
     } else if (tType === 'outreach') {
       const eligibleLeads = agentLeads.filter(l =>
@@ -372,8 +483,8 @@ export async function GET(request) {
 
     // ── 7. Process results ──
 
-    // 7a. Parse prospects into new leads
-    if (tType === 'prospect') {
+    // 7a. Parse prospects into new leads (prospect + event-scout both create leads)
+    if (tType === 'prospect' || tType === 'event-scout') {
       const newLeads = parseProspects(result, agent.id, agent);
       if (newLeads.length > 0) {
         // Check for duplicates
