@@ -1,7 +1,7 @@
 // Server-side API route to proxy Anthropic calls
 // This avoids exposing the API key client-side and handles longer timeouts
 
-export const maxDuration = 300; // 5 minutes max for Vercel Pro, 60s for free tier
+export const maxDuration = 60; // 60s max for Vercel free tier
 
 export async function POST(request) {
   try {

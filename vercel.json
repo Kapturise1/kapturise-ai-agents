@@ -4,7 +4,13 @@
   "outputDirectory": ".next",
   "functions": {
     "app/api/**": {
-      "maxDuration": 300
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/auto-run",
+      "schedule": "0 8 * * *"
+    }
+  ]
 }
