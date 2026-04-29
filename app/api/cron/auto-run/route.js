@@ -116,43 +116,61 @@ function parseEmailFromAI(result) {
   return { subject: subject || '(No subject parsed)', body: body || result.substring(0, 2000) };
 }
 
-// ── Call Google Gemini AI (FREE tier — 1,500 requests/day) ──
+// ── Call Google Gemini AI (FREE tier) ──
+// Models tried in order: gemini-2.0-flash → gemini-2.0-flash-lite (separate quotas)
+const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+
 async function callAI(system, prompt) {
-  // Try Gemini key from env var first, then fall back to Supabase api_keys table
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey) throw new Error('No GEMINI_API_KEY env var set — add your free Gemini key at console.cloud.google.com');
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000); // 45s — leaves 15s for DB ops
+  let lastError = null;
 
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 4096, temperature: 0.7 },
-        }),
-        signal: controller.signal,
+  for (const model of GEMINI_MODELS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 4096, temperature: 0.7 },
+          }),
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timeout);
+
+      if (response.status === 429) {
+        lastError = new Error(`Rate limited on ${model}`);
+        lastError.isRateLimit = true;
+        continue; // Try next model
       }
-    );
-    clearTimeout(timeout);
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Gemini API error ${response.status}: ${err.slice(0, 300)}`);
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Gemini API error ${response.status}: ${err.slice(0, 300)}`);
+      }
+
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } catch (e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('AI call timed out');
+      if (e.isRateLimit) { lastError = e; continue; }
+      throw e;
     }
-
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  } catch (e) {
-    clearTimeout(timeout);
-    if (e.name === 'AbortError') throw new Error('AI call timed out');
-    throw e;
   }
+
+  // All models rate-limited
+  const err = new Error('All Gemini models rate-limited — will retry next cron cycle');
+  err.isRateLimit = true;
+  throw err;
 }
 
 // ── Send email via configured provider ──
@@ -641,10 +659,21 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
       if (supabaseForLog) {
         await supabaseForLog.from('activity_logs').insert({
           agent_id: null,
-          message: `[CRON ERROR] ${error.message}`,
+          message: `[CRON ${error.isRateLimit ? 'RATE_LIMITED' : 'ERROR'}] ${error.message}`,
         });
       }
     } catch (_) { /* ignore logging errors */ }
+
+    // Rate-limit → return 200 so cron-job.org doesn't flag failures
+    if (error.isRateLimit) {
+      return Response.json({
+        ok: true,
+        skipped: true,
+        reason: 'rate_limited',
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     return Response.json({
       ok: false,
