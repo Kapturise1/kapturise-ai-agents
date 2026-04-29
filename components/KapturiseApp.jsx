@@ -1487,7 +1487,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
           const ranked=ta.map(a=>{
             const al=fl.filter(l=>l.assignedTo===a.id);const alv=al.reduce((s,l)=>s+(l.val||0),0);
             const closedLeads=al.filter(l=>l.stage==="Close");const propLeads=al.filter(l=>["Proposal","Negotiation","Close"].includes(l.stage));
-            const kd=(a.config||DEF_CFG).kpis.daily;const kw=(a.config||DEF_CFG).kpis.weekly;const km=(a.config||DEF_CFG).kpis.monthly;
+            const _cfg=(a.config||DEF_CFG);const _kpis=_cfg.kpis||DEF_CFG.kpis||{daily:[],weekly:[],monthly:[]};const kd=_kpis.daily||[];const kw=_kpis.weekly||[];const km=_kpis.monthly||[];
             const calls=a.autoStats?.calls||0;
             const msgs=a.autoStats?.dms||0;
             const emails=a.autoStats?.emails||0;
@@ -1564,7 +1564,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
 
   // ═══ EDITABLE TARGETING ═══
   function TargetingEditor({agent,agents,setAgents,T,cd,ip,bt,btG,bdg,c}){
-    const cfg=agent.config||DEF_CFG;
+    const _rc=agent.config||DEF_CFG;const cfg={..._rc,targeting:_rc.targeting||DEF_CFG.targeting||{industries:[],locations:[],professions:[],signals:[]}};
     const[newLoc,setNewLoc]=useState("");
     const[newInd,setNewInd]=useState("");
     const[newProf,setNewProf]=useState("");
@@ -1721,7 +1721,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
 
   function AgentWork({agent,agents,setAgents,scripts,isApproached,markApproached,scoreProspect,autoCreateFollowUp}){
     const[tab,setTab]=useState("workflow");const[result,setResult]=useState(null);const[loading,setLoading]=useState(false);const[custom,setCustom]=useState("");const ref=useRef(null);
-    const cfg=agent.config||DEF_CFG;const role=ROLES[agent.role]||{};const c=rc(agent.role);
+    const _rawCfg=agent.config||DEF_CFG;const cfg={..._rawCfg,kpis:_rawCfg.kpis||DEF_CFG.kpis||{daily:[],weekly:[],monthly:[]},targeting:_rawCfg.targeting||DEF_CFG.targeting||{industries:[],locations:[],professions:[],signals:[]},dataToCollect:_rawCfg.dataToCollect||DEF_CFG.dataToCollect||[],outreachSequence:_rawCfg.outreachSequence||DEF_CFG.outreachSequence||[]};const role=ROLES[agent.role]||{};const c=rc(agent.role);
     const chC={Instagram:T.pk,LinkedIn:T.sk,Email:T.br,Phone:T.am,WhatsApp:T.em};
     const pBlock=pricing.map(p=>`${p.icon} ${p.name}: ${p.base} ${p.unit}. Includes: ${p.includes.map(i=>`${i.base} ${i.l}`).join(", ")}. Add-ons: ${p.addons.map(a=>`${a.l} +${a.perUnit}AED`).join(", ")}`).join("\n");
 
