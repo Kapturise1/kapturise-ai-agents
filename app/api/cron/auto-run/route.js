@@ -118,7 +118,7 @@ function parseEmailFromAI(result) {
 
 // ── Call Google Gemini AI (FREE tier only — $0 cost) ──
 // Each model has its own separate free quota (~1,500 req/day each)
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
+const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash-8b'];
 
 async function callAI(system, prompt) {
   const geminiKey = process.env.GEMINI_API_KEY;
@@ -144,7 +144,7 @@ async function callAI(system, prompt) {
       );
       clearTimeout(timeout);
 
-      if (response.status === 429) continue; // Rate limited → try next model
+      if (response.status === 429 || response.status === 404) continue; // Rate limited or model unavailable → try next
 
       if (!response.ok) {
         const err = await response.text();
