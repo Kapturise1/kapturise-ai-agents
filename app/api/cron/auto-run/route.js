@@ -126,44 +126,57 @@ async function callAI(system, prompt) {
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey) throw new Error('No GEMINI_API_KEY env var set — get a free key at ai.google.dev');
 
+  // Try each model, with one retry on 503 (temporary overload)
   for (const model of GEMINI_MODELS) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
 
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: system }] },
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 4096, temperature: 0.7 },
-          }),
-          signal: controller.signal,
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: system }] },
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: { maxOutputTokens: 4096, temperature: 0.7 },
+            }),
+            signal: controller.signal,
+          }
+        );
+        clearTimeout(timeout);
+
+        // Rate limited or model unavailable → try next model
+        if (response.status === 429 || response.status === 404) break;
+
+        // Temporary overload → wait 3s and retry same model once
+        if (response.status === 503) {
+          if (attempt === 0) {
+            await new Promise(r => setTimeout(r, 3000));
+            continue; // retry same model
+          }
+          break; // already retried, try next model
         }
-      );
-      clearTimeout(timeout);
 
-      if (response.status === 429 || response.status === 404) continue; // Rate limited or model unavailable → try next
+        if (!response.ok) {
+          const err = await response.text();
+          throw new Error(`Gemini ${model} error ${response.status}: ${err.slice(0, 200)}`);
+        }
 
-      if (!response.ok) {
-        const err = await response.text();
-        throw new Error(`Gemini ${model} error ${response.status}: ${err.slice(0, 200)}`);
+        const data = await response.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      } catch (e) {
+        clearTimeout(timeout);
+        if (e.name === 'AbortError') throw new Error('AI call timed out');
+        throw e;
       }
-
-      const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } catch (e) {
-      clearTimeout(timeout);
-      if (e.name === 'AbortError') throw new Error('AI call timed out');
-      throw e;
     }
   }
 
-  // All 3 free models rate-limited — skip this cycle gracefully
-  const err = new Error('All Gemini free models rate-limited — will retry next cron cycle');
+  // All models unavailable — skip this cycle gracefully
+  const err = new Error('All Gemini free models rate-limited or unavailable — will retry next cron cycle');
   err.isRateLimit = true;
   throw err;
 }
