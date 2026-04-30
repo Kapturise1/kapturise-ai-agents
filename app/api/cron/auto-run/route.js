@@ -245,17 +245,21 @@ export async function GET(request) {
   //   }
   // }
 
-  // ── Throttle: only run AI every 15th invocation (~75 min at 5-min cron) ──
-  // Gemini free tier = 20 RPD, so we need ≤19 AI calls/day
+  // ── Throttle: run AI every 15th cron invocation (~75 min at 5-min intervals) ──
+  // Gemini free tier = 20 RPD for gemini-2.5-flash, so we target ≤19 AI calls/day
+  // Use ?force=true to bypass throttle for manual testing
   const now = new Date();
   const minuteOfDay = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const shouldRun = minuteOfDay % 75 < 5; // Run once every ~75 minutes (within a 5-min window)
+  const url = new URL(request.url);
+  const forceRun = url.searchParams.get('force') === 'true';
+  // Run if: forced OR minute-of-day falls in a 5-min window every 75 min
+  const shouldRun = forceRun || (minuteOfDay % 75 < 5);
   if (!shouldRun) {
     return Response.json({
       ok: true,
       skipped: true,
       reason: 'throttled',
-      message: `Waiting for next run window (every ~75 min to stay under free quota). Next window at minute ${Math.ceil(minuteOfDay / 75) * 75} of day.`,
+      message: `Waiting for next run window (every ~75 min to stay under free quota). Next window at minute ${Math.ceil(minuteOfDay / 75) * 75} of day. Add ?force=true to run now.`,
       timestamp: now.toISOString(),
     });
   }
