@@ -120,7 +120,7 @@ function parseEmailFromAI(result) {
 // Free tier: gemini-2.5-flash = 20 RPD, 5 RPM
 // We skip 2 out of 3 cron runs to stay under 20/day (288 runs/day ÷ 3 = 96… still too many)
 // Actually skip 14 out of 15 runs → ~19 runs/day at 5-min intervals
-const GEMINI_MODELS = ['gemini-2.5-flash-preview-04-17', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
 
 async function callAI(system, prompt) {
   const geminiKey = process.env.GEMINI_API_KEY;
