@@ -116,22 +116,16 @@ function parseEmailFromAI(result) {
   return { subject: subject || '(No subject parsed)', body: body || result.substring(0, 2000) };
 }
 
-// ── Call Google Gemini AI (FREE tier only — $0 cost) ──
-// Free tier: gemini-2.5-flash = 20 RPD, 5 RPM
-// We skip 2 out of 3 cron runs to stay under 20/day (288 runs/day ÷ 3 = 96… still too many)
-// Actually skip 14 out of 15 runs → ~19 runs/day at 5-min intervals
+// ── Call AI: tries Gemini free tier first, then DeepSeek as fallback ──
+// Gemini free tier: gemini-2.5-flash = 20 RPD, 5 RPM
+// DeepSeek: free credits on new accounts, ~$0.001/call after that
 const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
 
-async function callAI(system, prompt) {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (!geminiKey) throw new Error('No GEMINI_API_KEY env var set — get a free key at ai.google.dev');
-
-  // Try each model, with one retry on 503 (temporary overload)
+async function callGemini(system, prompt, geminiKey) {
   for (const model of GEMINI_MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 45000);
-
       try {
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
@@ -147,36 +141,69 @@ async function callAI(system, prompt) {
           }
         );
         clearTimeout(timeout);
-
-        // Rate limited or model unavailable → try next model
         if (response.status === 429 || response.status === 404) break;
-
-        // Temporary overload → wait 3s and retry same model once
         if (response.status === 503) {
-          if (attempt === 0) {
-            await new Promise(r => setTimeout(r, 3000));
-            continue; // retry same model
-          }
-          break; // already retried, try next model
+          if (attempt === 0) { await new Promise(r => setTimeout(r, 3000)); continue; }
+          break;
         }
-
-        if (!response.ok) {
-          const err = await response.text();
-          throw new Error(`Gemini ${model} error ${response.status}: ${err.slice(0, 200)}`);
-        }
-
+        if (!response.ok) return null; // non-retryable error, try fallback
         const data = await response.json();
         return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       } catch (e) {
         clearTimeout(timeout);
-        if (e.name === 'AbortError') throw new Error('AI call timed out');
-        throw e;
+        if (e.name === 'AbortError') return null;
+        return null;
       }
     }
   }
+  return null; // all Gemini models failed
+}
 
-  // All models unavailable — skip this cycle gracefully
-  const err = new Error('All Gemini free models rate-limited or unavailable — will retry next cron cycle');
+async function callDeepSeek(system, prompt, apiKey) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: prompt },
+        ],
+        max_tokens: 4096,
+        temperature: 0.7,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || '';
+  } catch (e) {
+    clearTimeout(timeout);
+    return null;
+  }
+}
+
+async function callAI(system, prompt) {
+  // 1. Try Gemini (free)
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey) {
+    const result = await callGemini(system, prompt, geminiKey);
+    if (result) return result;
+  }
+
+  // 2. Fallback: DeepSeek (free credits, then ~$0.001/call)
+  const deepseekKey = process.env.DEEPSEEK_API_KEY;
+  if (deepseekKey) {
+    const result = await callDeepSeek(system, prompt, deepseekKey);
+    if (result) return result;
+  }
+
+  // All providers failed
+  const err = new Error('All AI providers unavailable (Gemini overloaded, DeepSeek failed) — will retry next cron cycle');
   err.isRateLimit = true;
   throw err;
 }
