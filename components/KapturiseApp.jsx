@@ -3186,7 +3186,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
         </div>
       </div>}
 
-      {sortedLeads.map(l=>{const svc=pricing.find(p=>p.id===l.serviceType);const isOpen=expanded===l.id;const ag=agents.find(a=>a.id===l.assignedTo);
+      {sortedLeads.map(l=>{const svc=pricing.find(p=>p.id===l.serviceType);const isOpen=expanded===l.id;const ag=agents.find(a=>a.id===l.assignedTo);const _emailLogs=(l.logs||[]).filter(lg=>lg.type==="email");const _lastEmail=_emailLogs.length>0?_emailLogs[_emailLogs.length-1]:null;
         return <div key={l.id} style={{...cd,cursor:"pointer",borderColor:isOpen?stgC[l.stage]||T.bd:T.bd}} onClick={()=>setExpanded(isOpen?null:l.id)}>
           {/* Header row */}
           <div className="kap-lead-card" style={{display:"flex",alignItems:"center",gap:10}}>
@@ -3195,12 +3195,14 @@ If a prospect replies on any channel, continue the conversation there. If they g
                 <span style={{fontSize:15,fontWeight:700}}>{l.name}</span>
                 <span className="kap-badge" style={bdg(stgC[l.stage]||T.td)}>{l.stage}</span>
                 {svc&&<span className="kap-badge" style={bdg(T.cy)}>{svc.icon} {svc.name}</span>}
+                {_lastEmail&&<span className="kap-badge" style={bdg(T.em)}>✉️ Emailed</span>}
               </div>
               <div className="kap-lead-detail" style={{display:"flex",gap:12,marginTop:4,flexWrap:"wrap",fontSize:11.5,color:T.ts}}>
                 <span>👤 {l.contactName} — {l.contactTitle}</span>
                 <span>🏢 {l.ind}</span>
-                {l.createdAt&&<span>📅 Added: {new Date(l.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>}
-                {l.contactedAt&&<span>📧 Contacted: {new Date(l.contactedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>}
+                {l.createdAt&&<span>📅 {new Date(l.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}{" "}{new Date(l.createdAt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span>}
+                {_lastEmail&&<span style={{color:T.em}}>✉️ Email sent: {_lastEmail.date}{_lastEmail.summary?` — ${_lastEmail.summary.slice(0,50)}`:""}</span>}
+                {!_lastEmail&&l.email&&<span style={{color:T.td}}>✉️ Not yet emailed</span>}
               </div>
             </div>
             <div style={{textAlign:"right"}}>
