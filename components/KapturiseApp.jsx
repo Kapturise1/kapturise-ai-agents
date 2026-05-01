@@ -1564,7 +1564,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
 
   // ═══ EDITABLE TARGETING ═══
   function TargetingEditor({agent,agents,setAgents,T,cd,ip,bt,btG,bdg,c}){
-    const _rc=agent.config||DEF_CFG;const cfg={..._rc,targeting:_rc.targeting||DEF_CFG.targeting||{industries:[],locations:[],professions:[],signals:[]}};
+    const _rc=agent.config||DEF_CFG;const _defC=agent_cfg_for_role(agent.role||"sales");const _t=_rc.targeting||{};const cfg={..._defC,..._rc,targeting:{industries:_t.industries||_defC.targeting?.industries||[],locations:_t.locations||_defC.targeting?.locations||[],professions:_t.professions||_defC.targeting?.professions||[],signals:_t.signals||_defC.targeting?.signals||[]},dataToCollect:_rc.dataToCollect||_defC.dataToCollect||[],pitchFocus:_rc.pitchFocus||_defC.pitchFocus||""};
     const[newLoc,setNewLoc]=useState("");
     const[newInd,setNewInd]=useState("");
     const[newProf,setNewProf]=useState("");
@@ -1721,7 +1721,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
 
   function AgentWork({agent,agents,setAgents,scripts,isApproached,markApproached,scoreProspect,autoCreateFollowUp}){
     const[tab,setTab]=useState("workflow");const[result,setResult]=useState(null);const[loading,setLoading]=useState(false);const[custom,setCustom]=useState("");const ref=useRef(null);
-    const _rawCfg=agent.config||DEF_CFG;const cfg={..._rawCfg,kpis:_rawCfg.kpis||DEF_CFG.kpis||{daily:[],weekly:[],monthly:[]},targeting:_rawCfg.targeting||DEF_CFG.targeting||{industries:[],locations:[],professions:[],signals:[]},dataToCollect:_rawCfg.dataToCollect||DEF_CFG.dataToCollect||[],outreachSequence:_rawCfg.outreachSequence||DEF_CFG.outreachSequence||[]};const role=ROLES[agent.role]||{};const c=rc(agent.role);
+    const _rawCfg=agent.config||DEF_CFG;const _defCfg=agent_cfg_for_role(agent.role);const _tgt=_rawCfg.targeting||_defCfg.targeting||{};const _kpis=_rawCfg.kpis||_defCfg.kpis||{};const cfg={..._defCfg,..._rawCfg,kpis:{daily:_kpis.daily||_defCfg.kpis?.daily||[],weekly:_kpis.weekly||_defCfg.kpis?.weekly||[],monthly:_kpis.monthly||_defCfg.kpis?.monthly||[]},targeting:{industries:_tgt.industries||_defCfg.targeting?.industries||[],locations:_tgt.locations||_defCfg.targeting?.locations||[],professions:_tgt.professions||_defCfg.targeting?.professions||[],signals:_tgt.signals||_defCfg.targeting?.signals||[]},dataToCollect:_rawCfg.dataToCollect||_defCfg.dataToCollect||[],outreachSequence:_rawCfg.outreachSequence||_defCfg.outreachSequence||[],pipeline:_rawCfg.pipeline||_defCfg.pipeline||[],pitchFocus:_rawCfg.pitchFocus||_defCfg.pitchFocus||""};const role=ROLES[agent.role]||{};const c=rc(agent.role);
     const chC={Instagram:T.pk,LinkedIn:T.sk,Email:T.br,Phone:T.am,WhatsApp:T.em};
     const pBlock=pricing.map(p=>`${p.icon} ${p.name}: ${p.base} ${p.unit}. Includes: ${p.includes.map(i=>`${i.base} ${i.l}`).join(", ")}. Add-ons: ${p.addons.map(a=>`${a.l} +${a.perUnit}AED`).join(", ")}`).join("\n");
 
