@@ -402,6 +402,7 @@ export async function GET(request) {
   const minuteOfDay = now.getUTCHours() * 60 + now.getUTCMinutes();
   const url = new URL(request.url);
   const forceRun = url.searchParams.get('force') === 'true';
+  const taskOverride = url.searchParams.get('task');
   // Run if: forced OR every other 5-min window (skip alternating invocations)
   const shouldRun = forceRun || (minuteOfDay % 10 < 5);
   if (!shouldRun) {
@@ -470,7 +471,7 @@ export async function GET(request) {
     const tasks = TASK_CYCLE[role] || TASK_CYCLE.sales;
     // Use a different rotation for task index (based on how many times this agent has been picked today)
     const taskIndex = Math.floor(minuteOfDay / agents.length) % tasks.length;
-    const tType = tasks[taskIndex];
+    const tType = taskOverride || tasks[taskIndex];
 
     const cfg = agent.config || { targeting: { industries: ['various'], locations: ['Dubai, UAE'] } };
     const inds = cfg.targeting?.industries?.join(', ') || 'various industries';
