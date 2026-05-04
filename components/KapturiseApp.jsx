@@ -3057,10 +3057,10 @@ If a prospect replies on any channel, continue the conversation there. If they g
     };
 
     const[leadFilterRep,setLeadFilterRep]=useState("All");
-    const[leadFilterDate,setLeadFilterDate]=useState("all");const[leadFilterIndustry,setLeadFilterIndustry]=useState("All");
+    const[leadFilterDate,setLeadFilterDate]=useState("all");const[leadFilterIndustry,setLeadFilterIndustry]=useState("All");const[leadSearchQ,setLeadSearchQ]=useState("");
     const[leadSortBy,setLeadSortBy]=useState("newest");
     const sortedLeads=leads.filter(l=>{
-      if(leadFilterRep!=="All"&&l.assignedTo!==leadFilterRep)return false;if(leadFilterIndustry!=="All"&&!(l.ind||l.industry||"").toLowerCase().includes(leadFilterIndustry.toLowerCase()))return false;
+      if(leadFilterRep!=="All"&&l.assignedTo!==leadFilterRep)return false;if(leadFilterIndustry!=="All"&&!(l.ind||l.industry||"").toLowerCase().includes(leadFilterIndustry.toLowerCase()))return false;if(leadSearchQ){const sq=leadSearchQ.toLowerCase();if(!((l.name||l.company_name||"").toLowerCase().includes(sq)||(l.company||l.org||"").toLowerCase().includes(sq)||(l.email||"").toLowerCase().includes(sq)||(l.title||l.role||"").toLowerCase().includes(sq)||(l.ind||l.industry||"").toLowerCase().includes(sq)))return false;}
       if(leadFilterDate!=="all"){
         const lastLog=l.logs?.length>0?l.logs[l.logs.length-1]:null;
         const created=l.id?new Date(typeof l.id==="number"?l.id:Date.now()):new Date();
@@ -3100,7 +3100,8 @@ If a prospect replies on any channel, continue the conversation there. If they g
             <option value="month">This Month</option>
           </select>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:4}}>
+        <div style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:180}}><span style={{fontSize:14}}>🔍</span><input type="text" placeholder="Search leads..." value={leadSearchQ} onChange={e=>setLeadSearchQ(e.target.value)} style={{...ip,flex:1,padding:"5px 10px",fontSize:11,borderRadius:6}} /></div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
           <span style={{fontSize:10.5,color:T.td}}>👤 Rep:</span>
           <select style={{...ip,width:140,padding:"4px 8px",fontSize:10.5}} value={leadFilterRep} onChange={e=>setLeadFilterRep(e.target.value)}>
             <option value="All">All Reps</option>
@@ -3125,7 +3126,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
             <option value="stage">Pipeline Stage</option>
           </select>
         </div>
-        {(leadFilterRep!=="All"||leadFilterDate!=="all")&&<button style={{...btG(T.rs),padding:"3px 8px",fontSize:9.5}} onClick={()=>{setLeadFilterRep("All");setLeadFilterDate("all");setLeadFilterIndustry("All");}}>✕ Clear Filters</button>}
+        {(leadFilterRep!=="All"||leadFilterDate!=="all")&&<button style={{...btG(T.rs),padding:"3px 8px",fontSize:9.5}} onClick={()=>{setLeadFilterRep("All");setLeadFilterDate("all");setLeadFilterIndustry("All");setLeadSearchQ("");}}>✕ Clear Filters</button>}
       </div>
 
       {showImport&&<div style={cd}>
