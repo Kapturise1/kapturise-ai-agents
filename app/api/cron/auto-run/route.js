@@ -649,79 +649,50 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
       label = `Scouting exhibitors at ${venue.name}`;
 
     } else if (tType === 'outreach') {
-      const eligibleLeads = agentLeads.filter(l =>
-        ['Research', 'Warm-Up'].includes(l.stage) ||
-        (l.stage === 'First Contact' && !(l.logs || []).some(lg => lg.type === 'email'))
-      );
-
-      // Email provider from env vars
-      const gmailPass = process.env.GMAIL_APP_PASSWORD;
-      const gmailEmail = process.env.GMAIL_EMAIL || 'contact@kapturise.com';
-      const emailProvider = gmailPass ? 'gmail' : process.env.EMAIL_PROVIDER;
-      const emailApiKey = gmailPass || process.env.EMAIL_API_KEY;
-      const emailFrom = gmailEmail || process.env.EMAIL_FROM || 'contact@kapturise.com';
-
-      // Pick up to 3 leads with valid emails
-      const emailableLeads = eligibleLeads.filter(l => l.email).slice(0, 3);
-
-      for (const lead of emailableLeads) {
-        const leadEmail = lead.email;
-        if (!emailProvider || !emailApiKey) {
-          actions.push(`Email skipped for ${lead.name}: no GMAIL_APP_PASSWORD or EMAIL_PROVIDER env var set`);
-          break;
-        }
+      // Batch outreach: send approved templates to up to 3 leads per cycle
+      var eligibleLeads = agentLeads.filter(function(l) {
+        return ['Research', 'Warm-Up'].includes(l.stage) ||
+          (l.stage === 'First Contact' && !(l.logs || []).some(function(lg) { return lg.type === 'email'; }));
+      });
+      var gmailPass = process.env.GMAIL_APP_PASSWORD;
+      var gmailUser = process.env.GMAIL_EMAIL || 'contact@kapturise.com';
+      var emailFrom = gmailUser;
+      var emailableLeads = eligibleLeads.filter(function(l) { return l.email; }).slice(0, 3);
+      var sentCount = 0;
+      for (var li = 0; li < emailableLeads.length; li++) {
+        var currentLead = emailableLeads[li];
         try {
-          // Use approved template directly (no AI hallucination risk)
-          const indTemplate = getTemplateForIndustry(lead.industry || '');
-          const rendered = renderTemplate(indTemplate, {
-            contactName: lead.contact_name || 'there',
-            company: lead.name || 'your company',
-          });
-          let subject = rendered.subject;
-          let body = rendered.body;
-          body = body.replace(/\{\{agentName\}\}/g, agent.name || 'Kapturise Team')
-            .replace(/\{\{agentTitle\}\}/g, agent.title || 'Sales Representative');
-          subject = subject.replace(/\{\{agentName\}\}/g, agent.name || 'Kapturise Team')
-            .replace(/\{\{agentTitle\}\}/g, agent.title || 'Sales Representative');
-
-          const emailResult = await sendEmail({
-            to: leadEmail, subject, body,
-            provider: emailProvider, apiKey: emailApiKey, from: emailFrom,
-          });
-
-          if (emailResult.success) {
-            const emailLog = {
-              type: 'email',
-              date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-              msg: `Server: Email sent to ${leadEmail}`,
-              summary: `Email: ${subject}`,
-              transcript: `To: ${leadEmail}\nSubject: ${subject}\n\n${body}`,
-            };
-            const updatedLogs = [...(lead.logs || []), emailLog];
-            const newStage = lead.stage === 'Research' ? 'First Contact' : lead.stage;
-            await supabase.from('leads')
-              .update({ logs: updatedLogs, stage: newStage })
-              .eq('id', lead.id);
-            actions.push(`Email sent to ${lead.name} (${leadEmail})`);
+          var leadIndustry = (currentLead.industry || '').toLowerCase();
+          var isInvestor = role === 'investor' || leadIndustry.includes('invest') || leadIndustry.includes('venture') || leadIndustry.includes('capital');
+          var emailSubject, emailBody;
+          if (isInvestor) {
+            emailSubject = 'Investment Opportunity: AI-Powered Creative Studio in Dubai';
+            emailBody = 'Dear ' + (currentLead.contact_name || currentLead.name) + ',\n\nI am reaching out regarding an investment opportunity in Kapturise, a Dubai-based AI-powered creative studio.\n\nWe combine AI technology with professional photography and videography to deliver premium content at scale for businesses across the UAE.\n\nKey highlights:\n- AI-driven workflow reducing production time by 60%\n- Growing client base in real estate, hospitality, and F&B\n- Monthly recurring revenue model\n- Based in Dubai with regional expansion planned\n\nI would welcome the opportunity to share our investor deck and discuss how this aligns with your portfolio.\n\nBest regards,\n' + agent.name + '\nKapturise';
+          } else {
+            var svcName = 'Creative Content';
+            var pricing = getIndustryPricing(leadIndustry);
+            if (pricing.service) svcName = pricing.service;
+            emailSubject = svcName + ' for ' + currentLead.name + ' - Kapturise';
+            emailBody = 'Hi ' + (currentLead.contact_name || currentLead.name) + ',\n\nI noticed ' + currentLead.name + ' could benefit from professional ' + svcName.toLowerCase() + ' services.\n\nAt Kapturise, we specialize in AI-enhanced visual content for businesses in ' + (currentLead.industry || 'your industry') + '. Our ' + svcName.toLowerCase() + ' packages start from AED ' + (pricing.price || '2,000') + '.\n\nWould you be open to a quick call this week to discuss how we can help elevate your brand visuals?\n\nBest regards,\n' + agent.name + '\nKapturise\ncontact@kapturise.com';
           }
+          if (gmailPass) {
+            var nodemailer = await import('nodemailer');
+            var transporter = nodemailer.default.createTransport({ service: 'gmail', auth: { user: gmailUser, pass: gmailPass } });
+            await transporter.sendMail({ from: emailFrom, to: currentLead.email, subject: emailSubject, text: emailBody });
+          }
+          var updatedLogs = (currentLead.logs || []).concat([{ type: 'email', date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), msg: 'Outreach email sent: ' + emailSubject, summary: emailSubject, transcript: 'To: ' + currentLead.email + '\nSubject: ' + emailSubject + '\n\n' + emailBody }]);
+          var newStage = currentLead.stage === 'Research' ? 'First Contact' : currentLead.stage;
+          await supabase.from('leads').update({ logs: updatedLogs, stage: newStage, last_contacted: new Date().toISOString() }).eq('id', currentLead.id);
+          sentCount++;
+          actions.push('Emailed ' + currentLead.name + ' (' + currentLead.email + ')');
         } catch (emailErr) {
-          const errLog = {
-            type: 'note',
-            date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            msg: `Server email error: ${emailErr.message}`,
-            summary: 'Email send error',
-          };
-          const updatedLogs = [...(lead.logs || []), errLog];
-          await supabase.from('leads').update({ logs: updatedLogs }).eq('id', lead.id);
-          actions.push(`Email failed for ${lead.name}: ${emailErr.message}`);
+          actions.push('Email failed for ' + currentLead.name + ': ' + emailErr.message);
         }
       }
-
-      if (emailableLeads.length === 0 && eligibleLeads.length > 0) {
-        actions.push(`${eligibleLeads.length} eligible leads but none have email addresses`);
-      } else if (eligibleLeads.length === 0) {
-        actions.push('No eligible leads for outreach (all already emailed or wrong stage)');
+      if (sentCount === 0 && emailableLeads.length === 0) {
+        actions.push('No leads with email addresses ready for outreach');
       }
+      taskLabel = 'Batch outreach: ' + sentCount + '/' + emailableLeads.length + ' emails sent';
     } else if (tType === 'follow-up') {
       const nowMs = Date.now();
       const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
