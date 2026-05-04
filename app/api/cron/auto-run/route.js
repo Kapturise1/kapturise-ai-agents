@@ -479,7 +479,24 @@ export async function GET(request) {
 
     // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 5. Build prompt based on task type ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
     let prompt, label;
-    const agentLeads = allLeads.filter(l => l.assigned_to === agent.id);
+    const agentLeads = allLeads.filter(l =>
+        l.assigned_to === agent.id || l.assigned_to === agent.name
+      );
+
+      // Debug mode: return diagnostic info
+      if (url.searchParams.get('debug') === 'true') {
+        const sampleLeads = agentLeads.slice(0, 5).map(l => ({ name: l.name, stage: l.stage, email: l.email || '', assigned_to: l.assigned_to }));
+        const allAssignedValues = [...new Set(allLeads.map(l => l.assigned_to).filter(Boolean))];
+        return Response.json({
+          debug: true,
+          agent: { id: agent.id, name: agent.name, role },
+          totalLeadsInDB: allLeads.length,
+          agentLeadsCount: agentLeads.length,
+          sampleLeads,
+          allAssignedToValues: allAssignedValues.slice(0, 20),
+          allAgentIds: agents.map(a => a.id),
+        });
+      }
 
 
     // ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Cross-agent dedup: build exclusion list of ALL existing lead names ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
@@ -636,21 +653,75 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
         ['Research', 'Warm-Up'].includes(l.stage) ||
         (l.stage === 'First Contact' && !(l.logs || []).some(lg => lg.type === 'email'))
       );
-      if (eligibleLeads.length > 0) {
-        const lead = eligibleLeads[Math.floor(Math.random() * eligibleLeads.length)];
-        const indTemplate = getTemplateForIndustry(lead.industry || '');
-        const rendered = renderTemplate(indTemplate, {
-          contactName: lead.contact_name || 'there',
-          company: lead.name || 'your company',
-        });
-        prompt = `You are ${agent.name} at Kapturise. Write personalized outreach for:\n\nCompany: ${lead.name}\nContact: ${lead.contact_name} (${lead.contact_title})\nIndustry: ${lead.industry}\nNotes: ${lead.notes || 'none'}\nWebsite: ${lead.website || 'not provided'}\n\nHere is the APPROVED email template for this industry. Use this as the base ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ personalize it with the prospect's specific details but keep the pricing, services, portfolio links, and contact info exactly as shown:\n\n--- APPROVED TEMPLATE ---\nSubject: ${rendered.subject}\n\n${rendered.body}\n--- END TEMPLATE ---\n\nNow write:\n1. EMAIL: Personalize the template above for ${lead.name}. Keep the pricing and services EXACT. Add 1-2 personalized sentences about their specific business.\n2. INSTAGRAM DM: Under 3 sentences, casual, reference their business by name, mention the most relevant service and starting price.\n3. LINKEDIN NOTE: Under 300 chars, professional tone, mention relevant service.\n\nIMPORTANT RULES:\n- Use EXACT pricing from the template (do NOT make up prices)\n- Include the company profile PDF link: https://kapturise-ai-agents.vercel.app/Kapturise-Company-Profile.pdf\n- Include portfolio video links from the template\n- Keep email under 200 words\n- Professional Dubai tone (friendly, direct, value-focused)\n- CTA: contact@kapturise.com / 055-913-7354`;
-        label = `Writing ${indTemplate.name} outreach for ${lead.name}`;
-      } else {
-        const coldTemplate = getTemplateForIndustry(inds.split(',')[0]?.trim() || '');
-        prompt = `You are ${agent.name} at Kapturise. Write 3 cold outreach templates for ${inds} businesses in ${locs}.\n\nUse this approved template style and pricing:\nTemplate: ${coldTemplate.name}\nSubject: ${coldTemplate.subject}\n\nFor each, include: email + Instagram DM + LinkedIn note.\nUse EXACT pricing from Kapturise templates. Include company profile link: https://kapturise-ai-agents.vercel.app/Kapturise-Company-Profile.pdf`;
-        label = `Creating ${coldTemplate.name} outreach templates`;
+
+      // Email provider from env vars
+      const gmailPass = process.env.GMAIL_APP_PASSWORD;
+      const gmailEmail = process.env.GMAIL_EMAIL || 'contact@kapturise.com';
+      const emailProvider = gmailPass ? 'gmail' : process.env.EMAIL_PROVIDER;
+      const emailApiKey = gmailPass || process.env.EMAIL_API_KEY;
+      const emailFrom = gmailEmail || process.env.EMAIL_FROM || 'contact@kapturise.com';
+
+      // Pick up to 3 leads with valid emails
+      const emailableLeads = eligibleLeads.filter(l => l.email).slice(0, 3);
+
+      for (const lead of emailableLeads) {
+        const leadEmail = lead.email;
+        if (!emailProvider || !emailApiKey) {
+          actions.push(`Email skipped for ${lead.name}: no GMAIL_APP_PASSWORD or EMAIL_PROVIDER env var set`);
+          break;
+        }
+        try {
+          // Use approved template directly (no AI hallucination risk)
+          const indTemplate = getTemplateForIndustry(lead.industry || '');
+          const rendered = renderTemplate(indTemplate, {
+            contactName: lead.contact_name || 'there',
+            company: lead.name || 'your company',
+          });
+          let subject = rendered.subject;
+          let body = rendered.body;
+          body = body.replace(/\{\{agentName\}\}/g, agent.name || 'Kapturise Team')
+            .replace(/\{\{agentTitle\}\}/g, agent.title || 'Sales Representative');
+          subject = subject.replace(/\{\{agentName\}\}/g, agent.name || 'Kapturise Team')
+            .replace(/\{\{agentTitle\}\}/g, agent.title || 'Sales Representative');
+
+          const emailResult = await sendEmail({
+            to: leadEmail, subject, body,
+            provider: emailProvider, apiKey: emailApiKey, from: emailFrom,
+          });
+
+          if (emailResult.success) {
+            const emailLog = {
+              type: 'email',
+              date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+              msg: `Server: Email sent to ${leadEmail}`,
+              summary: `Email: ${subject}`,
+              transcript: `To: ${leadEmail}\nSubject: ${subject}\n\n${body}`,
+            };
+            const updatedLogs = [...(lead.logs || []), emailLog];
+            const newStage = lead.stage === 'Research' ? 'First Contact' : lead.stage;
+            await supabase.from('leads')
+              .update({ logs: updatedLogs, stage: newStage })
+              .eq('id', lead.id);
+            actions.push(`Email sent to ${lead.name} (${leadEmail})`);
+          }
+        } catch (emailErr) {
+          const errLog = {
+            type: 'note',
+            date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            msg: `Server email error: ${emailErr.message}`,
+            summary: 'Email send error',
+          };
+          const updatedLogs = [...(lead.logs || []), errLog];
+          await supabase.from('leads').update({ logs: updatedLogs }).eq('id', lead.id);
+          actions.push(`Email failed for ${lead.name}: ${emailErr.message}`);
+        }
       }
 
+      if (emailableLeads.length === 0 && eligibleLeads.length > 0) {
+        actions.push(`${eligibleLeads.length} eligible leads but none have email addresses`);
+      } else if (eligibleLeads.length === 0) {
+        actions.push('No eligible leads for outreach (all already emailed or wrong stage)');
+      }
     } else if (tType === 'follow-up') {
       const nowMs = Date.now();
       const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
