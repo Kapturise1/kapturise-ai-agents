@@ -2888,9 +2888,8 @@ If a prospect replies on any channel, continue the conversation there. If they g
             <span style={{fontSize:13,color:T.td}}>{isOpen?"▲":"▼"}</span>
           </div>
 
-          {isOpen&&<div style={{marginTop:12,borderTop:`1px solid ${T.bd}`,paddingTop:12}} onClick={e=>
+          {isOpen&&<div style={{marginTop:12,borderTop:`1px solid ${T.bd}`,paddingTop:12}} onClick={e=>e.stopPropagation()}>
 {(()=>{const eLogs=(inv.logs||[]).filter(lg=>lg.type==="email");const lastE=eLogs.length>0?eLogs[eLogs.length-1]:null;return lastE?<div style={{background:"rgba(99,102,241,0.06)",border:"1px solid rgba(99,102,241,0.18)",borderRadius:8,padding:14,marginBottom:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:16}}>✉️</span><span style={{fontSize:13,fontWeight:700,color:T.br}}>Email Sent</span><span style={{fontSize:11,color:T.td,marginLeft:"auto"}}>{lastE.date}</span></div>{lastE.summary&&<div style={{fontSize:12,fontWeight:600,color:T.tx,marginBottom:6}}>Subject: {lastE.summary}</div>}{lastE.transcript&&<div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6,background:T.bg,borderRadius:6,padding:10,maxHeight:300,overflow:"auto",border:`1px solid ${T.bd}`}}>{lastE.transcript}</div>}{!lastE.transcript&&lastE.msg&&<div style={{fontSize:11.5,color:T.ts}}>{lastE.msg}</div>}</div>:null})()}
-e.stopPropagation()}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
               <div style={{background:T.sa,borderRadius:6,padding:8}}>
                 <div style={{fontSize:9.5,color:T.td,textTransform:"uppercase",marginBottom:3}}>Fund Details</div>
@@ -3224,9 +3223,8 @@ e.stopPropagation()}>
           </div>
 
           {/* Expanded detail */}
-          {isOpen&&<div style={{marginTop:14,borderTop:`1px solid ${T.bd}`,paddingTop:14}} onClick={e=>
+          {isOpen&&<div style={{marginTop:14,borderTop:`1px solid ${T.bd}`,paddingTop:14}} onClick={e=>e.stopPropagation()}>
 {_lastEmail&&<div style={{background:"rgba(99,102,241,0.06)",border:"1px solid rgba(99,102,241,0.18)",borderRadius:8,padding:14,marginBottom:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:16}}>✉️</span><span style={{fontSize:13,fontWeight:700,color:T.br}}>Email Sent</span><span style={{fontSize:11,color:T.td,marginLeft:"auto"}}>{_lastEmail.date}</span></div>{_lastEmail.summary&&<div style={{fontSize:12,fontWeight:600,color:T.tx,marginBottom:6}}>Subject: {_lastEmail.summary}</div>}{_lastEmail.transcript&&<div style={{fontSize:11.5,color:T.ts,whiteSpace:"pre-wrap",lineHeight:1.6,background:T.bg,borderRadius:6,padding:10,maxHeight:300,overflow:"auto",border:`1px solid ${T.bd}`}}>{_lastEmail.transcript}</div>}{!_lastEmail.transcript&&_lastEmail.msg&&<div style={{fontSize:11.5,color:T.ts}}>{_lastEmail.msg}</div>}</div>}
-e.stopPropagation()}>
             {/* Contact Grid */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
               <div style={{background:T.sa,borderRadius:7,padding:10}}>
