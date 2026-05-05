@@ -101,11 +101,9 @@ async function apolloProspect(agent, industries, locations, existingNames) {
   var apolloKey = process.env.APOLLO_API_KEY;
   if (!apolloKey) return { leads: [], msg: "APOLLO_API_KEY not set" };
   var titles = ["CEO","CTO","COO","Managing Director","Founder","Head of Operations","VP"];
-  var searchBody = { api_key: apolloKey, page: 1, per_page: 10, person_titles: titles };
-  if (industries && industries.length > 0) searchBody.person_locations = locations || ["United Arab Emirates"];
+  var searchBody = { api_key: apolloKey, page: 1, per_page: 10, person_titles: titles, person_locations: locations || ["United Arab Emirates"] };
   if (industries && industries.length > 0) {
-    var q = industries.slice(0,3).join(" OR ");
-    searchBody.q_organization_name = q;
+    searchBody.q_organization_keyword_tags = industries.slice(0,3);
   }
   try {
     var searchRes = await fetch("https://api.apollo.io/api/v1/mixed_people/search", {
