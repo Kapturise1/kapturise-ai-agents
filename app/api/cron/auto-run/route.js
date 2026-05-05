@@ -563,7 +563,9 @@ export async function GET(request) {
       { source: 'general', label: 'Industry Research' },
     ];
     const sourceIdx = Math.floor(minuteOfDay / (agents.length * tasks.length)) % prospectSources.length;
-    const prospectSource = prospectSources[sourceIdx];
+    var prospectSource = prospectSources[sourceIdx];
+    var forceSource = url.searchParams.get('source');
+    if (forceSource) { var fs = prospectSources.find(function(s){return s.source === forceSource}); if (fs) prospectSource = fs; }
 
     // Exhibition venues in UAE for event-based prospecting
     const EXHIBITION_VENUES = [
