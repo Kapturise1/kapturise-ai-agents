@@ -112,6 +112,7 @@ async function apolloProspect(agent, industries, locations, existingNames) {
       body: JSON.stringify(searchBody)
     });
     var searchData = await searchRes.json();
+    console.log("APOLLO_DEBUG status=" + searchRes.status + " keys=" + Object.keys(searchData).join(",") + " peopleCount=" + (searchData.people ? searchData.people.length : "NO_PEOPLE_KEY") + " raw=" + JSON.stringify(searchData).substring(0,500));
     if (!searchData.people || searchData.people.length === 0) return { leads: [], msg: "No Apollo results" };
     var leads = [];
     var top = searchData.people.slice(0, 5);
