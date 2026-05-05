@@ -106,7 +106,7 @@ async function apolloProspect(agent, industries, locations, existingNames) {
     searchBody.q_organization_keyword_tags = industries.slice(0,3);
   }
   try {
-    var searchRes = await fetch("https://api.apollo.io/api/v1/mixed_people/search", {
+    var searchRes = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Api-Key": apolloKey },
       body: JSON.stringify(searchBody)
@@ -563,9 +563,7 @@ export async function GET(request) {
       { source: 'general', label: 'Industry Research' },
     ];
     const sourceIdx = Math.floor(minuteOfDay / (agents.length * tasks.length)) % prospectSources.length;
-    var prospectSource = prospectSources[sourceIdx];
-    var forceSource = url.searchParams.get('source');
-    if (forceSource) { var fs = prospectSources.find(function(s){return s.source === forceSource}); if (fs) prospectSource = fs; }
+    const prospectSource = prospectSources[sourceIdx];
 
     // Exhibition venues in UAE for event-based prospecting
     const EXHIBITION_VENUES = [
