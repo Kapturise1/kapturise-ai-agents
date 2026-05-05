@@ -1,4 +1,4 @@
-(tType === 'prospect' || tType === 'event scout') && !skipAI¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ replaces client-side 45s interval
+// Server-side auto-run engine ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ replaces client-side 45s interval
 // Called by: Vercel daily cron (free tier) + external cron service (cron-job.org) every 2-5 min
 // Reads/writes leads and agents from Supabase directly
 
@@ -99,35 +99,47 @@ function parseProspects(aiOut, agId, ag) {
 // Apollo.io integration: prospect + enrich real leads
 async function apolloProspect(agent, industries, locations, existingNames) {
   var apolloKey = process.env.APOLLO_API_KEY;
-  if (!apolloKey) return { leads: [], msg: 'APOLLO_API_KEY not set' };
+  if (!apolloKey) return { leads: [], msg: "APOLLO_API_KEY not set" };
+  var titles = ["CEO","CTO","COO","Managing Director","Founder","Head of Operations","VP"];
+  var searchBody = { api_key: apolloKey, page: 1, per_page: 10, person_titles: titles };
+  if (industries && industries.length > 0) searchBody.person_locations = locations || ["United Arab Emirates"];
+  if (industries && industries.length > 0) {
+    var q = industries.slice(0,3).join(" OR ");
+    searchBody.q_organization_name = q;
+  }
   try {
-    var titles = ['CEO', 'Managing Director', 'Founder', 'General Manager', 'Director'];
-    var seniorities = ['c_suite', 'vp', 'director', 'manager'];
-    var orgLocations = locations || ['United Arab Emirates'];
-    var keywords = Array.isArray(industries) ? industries : [industries || 'real estate'];
-    var searchBody = { per_page: 5, person_titles: titles.slice(0, 3), person_seniorities: seniorities, organization_locations: orgLocations, q_organization_keyword_tags: keywords };
-    var searchResp = await fetch('https://api.apollo.io/api/v1/mixed_people/search', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': apolloKey }, body: JSON.stringify(searchBody), signal: AbortSignal.timeout(20000) });
-    if (!searchResp.ok) return { leads: [], msg: 'Apollo search HTTP ' + searchResp.status };
-    var searchData = await searchResp.json();
-    var people = searchData.people || [];
-    if (people.length === 0) return { leads: [], msg: 'No Apollo results' };
+    var searchRes = await fetch("https://api.apollo.io/api/v1/mixed_people/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Api-Key": apolloKey },
+      body: JSON.stringify(searchBody)
+    });
+    var searchData = await searchRes.json();
+    if (!searchData.people || searchData.people.length === 0) return { leads: [], msg: "No Apollo results" };
     var leads = [];
-    for (var i = 0; i < Math.min(people.length, 3); i++) {
-      var p = people[i];
-      var pOrgName = (p.organization || {}).name || '';
-      var normalizedOrg = pOrgName.toLowerCase().trim();
-      if (existingNames.some(function(n) { return n.includes(normalizedOrg) || normalizedOrg.includes(n); })) continue;
-      var enrichResp = await fetch('https://api.apollo.io/api/v1/people/match', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': apolloKey }, body: JSON.stringify({ id: p.id }), signal: AbortSignal.timeout(15000) });
-      var email = '', phone = '', linkedin = '';
-      if (enrichResp.ok) { var ed = await enrichResp.json(); var ep = ed.person || {}; email = ep.email || ''; phone = ep.phone_numbers && ep.phone_numbers[0] ? ep.phone_numbers[0].sanitized_number || '' : ''; linkedin = ep.linkedin_url || ''; }
-      var org = p.organization || {};
-      var ind = org.industry || (agent.config && agent.config.targeting && agent.config.targeting.industries ? agent.config.targeting.industries[0] : 'General');
-      leads.push({ name: org.name || pOrgName || ('Apollo Lead ' + (i + 1)), website: org.website_url || '', industry: ind, stage: 'Research', contact_name: (p.first_name || '') + ' ' + (p.last_name || ''), contact_title: p.title || '', email: email, phone: phone, instagram: '', linkedin: linkedin, value: 5000, notes: 'Apollo.io verified lead - discovered by ' + agent.name, source: agent.name + ' (Apollo.io)', source_type: 'apollo', assigned_to: agent.id, service_type: '', logs: [{ type: 'note', date: new Date().toISOString().split('T')[0], msg: 'Found via Apollo.io People Search. ' + (email ? 'Email verified.' : 'Email not available.'), summary: 'Apollo.io lead discovery' }] });
+    var top = searchData.people.slice(0, 5);
+    for (var p = 0; p < top.length; p++) {
+      var person = top[p];
+      var orgName = (person.organization && person.organization.name) || "";
+      if (existingNames && existingNames.indexOf(orgName.toLowerCase()) > -1) continue;
+      var email = person.email || "";
+      if (!email && person.first_name && person.last_name && person.organization && person.organization.primary_domain) {
+        try {
+          var matchRes = await fetch("https://api.apollo.io/api/v1/people/match", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Api-Key": apolloKey },
+            body: JSON.stringify({ api_key: apolloKey, first_name: person.first_name, last_name: person.last_name, organization_name: orgName })
+          });
+          var matchData = await matchRes.json();
+          if (matchData.person && matchData.person.email) email = matchData.person.email;
+        } catch(me) { }
+      }
+      leads.push({ name: orgName, website: (person.organization && person.organization.website_url) || "", industry: (person.organization && person.organization.industry) || "", stage: "Research", contact_name: (person.first_name || "") + " " + (person.last_name || ""), contact_title: person.title || "", email: email, phone: (person.phone_numbers && person.phone_numbers[0] && person.phone_numbers[0].sanitized_number) || "", linkedin: person.linkedin_url || "", value: 0, notes: "Found via Apollo.io search", source: "Apollo.io", source_type: "apollo", assigned_to: agent.name, service_type: "consulting", logs: [{ date: new Date().toISOString(), action: "Prospected via Apollo", details: "Auto-discovered by " + agent.name }] });
     }
-    return { leads: leads, msg: 'Apollo found ' + leads.length + ' verified leads' };
-  } catch (e) { return { leads: [], msg: 'Apollo error: ' + (e.message || e) }; }
+    return { leads: leads, msg: "Apollo found " + leads.length + " leads" };
+  } catch(err) {
+    return { leads: [], msg: "Apollo error: " + err.message };
+  }
 }
-
 
 // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Parse email subject and body from AI outreach text ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
 function parseEmailFromAI(result) {
@@ -510,8 +522,7 @@ export async function GET(request) {
     const inds = cfg.targeting?.industries?.join(', ') || 'various industries';
     const locs = cfg.targeting?.locations?.join(', ') || 'Dubai, UAE';
 
-    var skipAI = false;
-        // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 5. Build prompt based on task type ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+    // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 5. Build prompt based on task type ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
     let prompt, label;
     const agentLeads = allLeads.filter(l =>
         l.assigned_to === agent.id || l.assigned_to === agent.name
@@ -602,7 +613,8 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
       label = `Expo-scouting exhibitors at ${targetVenue} for ${currentMonth}`;
     }
 
-    if (tType === 'prospect') {
+    var skipAI = false;
+        if (tType === 'prospect') {
       if (prospectSource.source === 'google-maps') {
         prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai creative media agency).
 
@@ -648,18 +660,19 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...",
         label = `Scouting exhibition events for prospects`;
 
       } else if (prospectSource.source === 'apollo') {
-      var apolloResult = await apolloProspect(agent, cfg.targeting && cfg.targeting.industries, cfg.targeting && cfg.targeting.locations, existingLeadNames.map(function(n) { return n.toLowerCase().trim(); }));
-      if (apolloResult.leads.length > 0) {
-        var eNames = allLeads.map(function(l) { return (l.name || '').toLowerCase().trim(); });
-        var nrm = function(n) { return (n || '').toLowerCase().trim(); };
-        var eNorm = new Set(eNames.map(nrm));
-        var uApollo = apolloResult.leads.filter(function(nl) { var nn = nrm(nl.name); if (eNorm.has(nn)) return false; return true; });
-        if (uApollo.length > 0) { var ins = await supabase.from('leads').insert(uApollo); if (ins.error) actions.push('Apollo error: ' + ins.error.message); else actions.push('Apollo: Added ' + uApollo.length + ' verified leads'); }
-        else actions.push('Apollo: All leads already in CRM');
-      } else actions.push(apolloResult.msg);
-      label = 'Apollo prospecting for ' + inds.split(',')[0];
-      skipAI = true;
-    } else {
+            var apolloResult = await apolloProspect(agent, cfg.targeting && cfg.targeting.industries, cfg.targeting && cfg.targeting.locations, existingLeadNames.map(function(n){return n.toLowerCase()}));
+            label = apolloResult.msg;
+            if (apolloResult.leads.length > 0) {
+              var newApolloLeads = apolloResult.leads.filter(function(al) {
+                return existingLeadNames.indexOf((al.name || '').toLowerCase()) === -1;
+              });
+              if (newApolloLeads.length > 0) {
+                await supabase.from('leads').insert(newApolloLeads);
+                label = label + ' - inserted ' + newApolloLeads.length;
+              }
+            }
+            skipAI = true;
+          } else {
         prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai creative media agency). Find 3 NEW REAL business prospects in ${locs} in ${inds}. These must be REAL companies that actually exist ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ use your knowledge of businesses in Dubai/UAE. For EACH, provide: company name, contact person (use a realistic title like Marketing Manager, not a made-up name), title, industry, their likely email format (e.g. info@company.com), Instagram handle if known, LinkedIn URL if known, estimated project value in AED (use realistic Kapturise pricing: 2000-5000 for single shoots, 3000-8000 for packages), and suggested Kapturise service.\n${exclusionSnippet}${industryGuard}\nServices: ${pricingStr}\nRespond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":3500,"suggestedService":"...","notes":"..."}]`;
         label = `Finding 3 prospects in ${inds.split(',')[0]}`;
       }
@@ -797,14 +810,14 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
 
     // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 6. Call AI ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
     const systemPrompt = buildSystemPrompt(agent);
-    var result = skipAI ? (label || 'Apollo done') : await callAI(systemPrompt, prompt);
+    const result = skipAI ? (label || "Apollo done") : await callAI(systemPrompt, prompt);
 
     const actions = []; // Track what happened
 
     // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 7. Process results ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
 
     // 7a. Parse prospects into new leads (prospect + event-scout both create leads)
-    if (tType === 'prospect' || tType === 'event-scout') {
+    if ((tType === 'prospect' || tType === 'event-scout') && !skipAI) {
       const newLeads = parseProspects(result, agent.id, agent);
       if (newLeads.length > 0) {
         // Check for duplicates ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ fuzzy match to catch slight name variations
