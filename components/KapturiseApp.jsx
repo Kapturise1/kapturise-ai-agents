@@ -1468,7 +1468,7 @@ If a prospect replies on any channel, continue the conversation there. If they g
         <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>🏆 Agent Leaderboard</div>
         {/* KPI summary counters */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6,marginBottom:12}}>
-          {[{l:"Total Calls",v:agents.reduce((s,a)=>s+(a.autoStats?.calls||0),0),c:T.am,i:"📞"},{l:"DMs/Day",v:agents.reduce((s,a)=>s+(a.autoStats?.dms||0),0),c:T.pk,i:"💬"},{l:"Emails/Day",v:agents.reduce((s,a)=>s+(a.autoStats?.emails||0),0),c:T.br,i:"✉️"},{l:"Leads Found",v:agents.reduce((s,a)=>s+(a.autoStats?.prospects||0),0),c:T.sk,i:"🎯"},{l:"Deals/Month",v:leads.filter(l=>l.stage==="Close").length,c:T.em,i:"🤝"},{l:"Posts/Day",v:agents.reduce((s,a)=>s+(a.autoStats?.dms||0),0),c:T.vi,i:"📢"}].map((x,i)=>
+          {(()=>{const allLogs=fl.flatMap(l=>(l.logs||[]));const emailCount=allLogs.filter(lg=>lg.type==='email').length;const callCount=allLogs.filter(lg=>lg.type==='call'||lg.type==='phone'||(lg.msg||'').toLowerCase().includes('call')).length;const dmCount=allLogs.filter(lg=>lg.type==='dm'||lg.type==='instagram'||(lg.msg||'').toLowerCase().includes('dm')).length;const noteCount=allLogs.filter(lg=>lg.type==='note'||(lg.msg||'').toLowerCase().includes('post')||(lg.msg||'').toLowerCase().includes('content')).length;const prospectsFound=fl.length;return[{l:"Total Calls",v:callCount,c:T.am,i:"📞"},{l:"DMs Sent",v:dmCount,c:T.pk,i:"💬"},{l:"Emails Sent",v:emailCount,c:T.br,i:"✉️"},{l:"Leads Found",v:prospectsFound,c:T.sk,i:"🎯"},{l:"Deals/Month",v:leads.filter(l=>l.stage==="Close").length,c:T.em,i:"🤝"},{l:"Activities",v:allLogs.length,c:T.vi,i:"📢"}];})().map((x,i)=>
             <div key={i} style={{background:T.sa,borderRadius:6,padding:8,textAlign:"center",border:`1px solid ${T.bd}`}}>
               <div style={{fontSize:12}}>{x.i}</div><div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div><div style={{fontSize:8.5,color:T.td,textTransform:"uppercase"}}>{x.l}</div>
             </div>)}
@@ -1488,9 +1488,10 @@ If a prospect replies on any channel, continue the conversation there. If they g
             const al=fl.filter(l=>l.assignedTo===a.id);const alv=al.reduce((s,l)=>s+(l.val||0),0);
             const closedLeads=al.filter(l=>l.stage==="Close");const propLeads=al.filter(l=>["Proposal","Negotiation","Close"].includes(l.stage));
             const _cfg=(a.config||DEF_CFG);const _kpis=_cfg.kpis||DEF_CFG.kpis||{daily:[],weekly:[],monthly:[]};const kd=_kpis.daily||[];const kw=_kpis.weekly||[];const km=_kpis.monthly||[];
-            const calls=a.autoStats?.calls||0;
-            const msgs=a.autoStats?.dms||0;
-            const emails=a.autoStats?.emails||0;
+            const aLogs=al.flatMap(l=>(l.logs||[]));
+            const calls=aLogs.filter(lg=>lg.type==='call'||lg.type==='phone'||(lg.msg||'').toLowerCase().includes('call')).length;
+            const msgs=aLogs.filter(lg=>lg.type==='dm'||lg.type==='instagram'||(lg.msg||'').toLowerCase().includes('dm')).length;
+            const emails=aLogs.filter(lg=>lg.type==='email').length;
             return{...a,allLeads:al,leads:al.length,val:alv,closedLeads,propLeads,closed:closedLeads.length,props:propLeads.length,calls,msgs,emails,kd,kw,km};
           }).sort((a,b)=>b.val-a.val||b.leads-a.leads);
           if(!ranked.length)return <div style={{fontSize:12,color:T.td,textAlign:"center",padding:10}}>No agents</div>;
