@@ -18,11 +18,11 @@ function getSupabase() {
 
 // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Task cycle per role (mirrors client-side TASK_CYCLE) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
 const TASK_CYCLE = {
-  sales: ['prospect', 'outreach', 'event-scout', 'follow-up', 'outreach', 'qualify'],
+  sales: ['prospect', 'outreach', 'event-scout', 'outreach', 'follow-up', 'outreach'],
   marketing: ['content', 'engagement', 'content'],
   account: ['check-in', 'upsell'],
   analytics: ['report'],
-  investor: ['prospect', 'outreach', 'follow-up'],
+  investor: ['prospect', 'outreach', 'follow-up', 'outreach'],
   expo: ['event-scout', 'event-scout', 'outreach', 'event-scout', 'outreach', 'follow-up'],
 };
 
@@ -715,7 +715,7 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
       });
       var gmailPass = process.env.GMAIL_APP_PASSWORD;
       var gmailUser = process.env.GMAIL_EMAIL || 'contact@kapturise.com';
-      var emailableLeads = eligibleLeads.filter(function(l) { return l.email; }).slice(0, 3);
+      var emailableLeads = eligibleLeads.filter(function(l) { return l.email; }).slice(0, 5);
       var sentEmails = [];
       for (var li = 0; li < emailableLeads.length; li++) {
         var currentLead = emailableLeads[li];
