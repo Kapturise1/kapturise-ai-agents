@@ -1,4 +1,4 @@
-// Server-side auto-run engine ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ replaces client-side 45s interval
+// Server-side auto-run engine — replaces client-side 45s interval
 // Called by: Vercel daily cron (free tier) + external cron service (cron-job.org) every 2-5 min
 // Reads/writes leads and agents from Supabase directly
 
@@ -8,7 +8,7 @@ import { getTemplateForIndustry, renderTemplate } from '../../../../lib/emailTem
 export const maxDuration = 60; // Vercel free tier = 60s max
 export const dynamic = 'force-dynamic'; // Prevent Next.js from prerendering this route
 
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Supabase client (server-side, uses env vars) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ── Supabase client (server-side, uses env vars) ──
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -16,17 +16,16 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Task cycle per role (mirrors client-side TASK_CYCLE) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ── Task cycle per role (mirrors client-side TASK_CYCLE) ──
 const TASK_CYCLE = {
-  sales: ['prospect', 'outreach', 'event-scout', 'outreach', 'follow-up', 'outreach'],
+  sales: ['prospect', 'outreach', 'event-scout', 'follow-up', 'outreach', 'qualify'],
   marketing: ['content', 'engagement', 'content'],
   account: ['check-in', 'upsell'],
   analytics: ['report'],
-  investor: ['prospect', 'outreach', 'follow-up', 'outreach'],
-  expo: ['event-scout', 'event-scout', 'outreach', 'event-scout', 'outreach', 'follow-up'],
+  investor: ['prospect', 'outreach', 'follow-up'],
 };
 
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Industry pricing lookup (mirrors client-side getIndustryPricing) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ── Industry pricing lookup (mirrors client-side getIndustryPricing) ──
 function getIndustryPricing(industry) {
   if (!industry) return { service: '', price: 'varies', note: '' };
   const lower = industry.toLowerCase();
@@ -56,7 +55,7 @@ function getIndustryPricing(industry) {
   return { service: 'Creative Services', price: 'from AED 2,000', note: '' };
 }
 
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Parse AI prospect output into lead objects ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ── Parse AI prospect output into lead objects ──
 function parseProspects(aiOut, agId, ag) {
   const res = [];
   try {
@@ -92,55 +91,11 @@ function parseProspects(aiOut, agId, ag) {
         });
       });
     }
-  } catch (e) { /* parse error ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ skip */ }
+  } catch (e) { /* parse error — skip */ }
   return res;
 }
 
-// Apollo.io integration: prospect + enrich real leads
-async function apolloProspect(agent, industries, locations, existingNames) {
-  var apolloKey = process.env.APOLLO_API_KEY;
-  if (!apolloKey) return { leads: [], msg: "APOLLO_API_KEY not set" };
-  var titles = ["CEO","CTO","COO","Managing Director","Founder","Head of Operations","VP"];
-  var searchBody = { api_key: apolloKey, page: 1, per_page: 10, person_titles: titles, person_locations: locations || ["United Arab Emirates"] };
-  if (industries && industries.length > 0) {
-    searchBody.q_organization_keyword_tags = industries.slice(0,3);
-  }
-  try {
-    var searchRes = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Api-Key": apolloKey },
-      body: JSON.stringify(searchBody)
-    });
-    var searchData = await searchRes.json();
-    console.log("APOLLO_DEBUG status=" + searchRes.status + " keys=" + Object.keys(searchData).join(",") + " peopleCount=" + (searchData.people ? searchData.people.length : "NO_PEOPLE_KEY") + " raw=" + JSON.stringify(searchData).substring(0,500));
-    if (!searchData.people || searchData.people.length === 0) return { leads: [], msg: "No Apollo results" };
-    var leads = [];
-    var top = searchData.people.slice(0, 5);
-    for (var p = 0; p < top.length; p++) {
-      var person = top[p];
-      var orgName = (person.organization && person.organization.name) || "";
-      if (existingNames && existingNames.indexOf(orgName.toLowerCase()) > -1) continue;
-      var email = person.email || "";
-      if (!email && person.first_name && person.last_name && person.organization && person.organization.primary_domain) {
-        try {
-          var matchRes = await fetch("https://api.apollo.io/api/v1/people/match", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Api-Key": apolloKey },
-            body: JSON.stringify({ api_key: apolloKey, first_name: person.first_name, last_name: person.last_name, organization_name: orgName })
-          });
-          var matchData = await matchRes.json();
-          if (matchData.person && matchData.person.email) email = matchData.person.email;
-        } catch(me) { }
-      }
-      leads.push({ name: orgName, website: (person.organization && person.organization.website_url) || "", industry: (person.organization && person.organization.industry) || "", stage: "Research", contact_name: (person.first_name || "") + " " + (person.last_name || ""), contact_title: person.title || "", email: email, phone: (person.phone_numbers && person.phone_numbers[0] && person.phone_numbers[0].sanitized_number) || "", linkedin: person.linkedin_url || "", value: 0, notes: "Found via Apollo.io search", source: "Apollo.io", source_type: "apollo", assigned_to: agent.name, service_type: "consulting", logs: [{ date: new Date().toISOString(), action: "Prospected via Apollo", details: "Auto-discovered by " + agent.name }] });
-    }
-    return { leads: leads, msg: "Apollo found " + leads.length + " leads" };
-  } catch(err) {
-    return { leads: [], msg: "Apollo error: " + err.message };
-  }
-}
-
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Parse email subject and body from AI outreach text ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ── Parse email subject and body from AI outreach text ──
 function parseEmailFromAI(result) {
   let subject = '', body = '';
   try {
@@ -161,7 +116,7 @@ function parseEmailFromAI(result) {
   return { subject: subject || '(No subject parsed)', body: body || result.substring(0, 2000) };
 }
 
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Call AI: tries Gemini free tier first, then DeepSeek as fallback ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ── Call AI: tries Gemini free tier first, then DeepSeek as fallback ──
 // Gemini free tier: gemini-2.5-flash = 20 RPD, 5 RPM
 // DeepSeek: free credits on new accounts, ~$0.001/call after that
 const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
@@ -232,15 +187,13 @@ async function callDeepSeek(system, prompt, apiKey) {
   }
 }
 
-
-
 async function callOpenAI(system, prompt, apiKey) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45000);
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
@@ -268,7 +221,7 @@ async function callGroq(system, prompt, apiKey) {
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [
@@ -320,35 +273,35 @@ async function callAnthropic(system, prompt, apiKey) {
 }
 
 async function callAI(system, prompt) {
-  // 1. Try Gemini (free)
+  // 1. Gemini (FREE — 20 RPD)
   const geminiKey = process.env.GEMINI_API_KEY;
   if (geminiKey) {
     const result = await callGemini(system, prompt, geminiKey);
     if (result) return result;
   }
 
-  // 2. Fallback: DeepSeek (free credits, then ~$0.001/call)
-  const deepseekKey = process.env.DEEPSEEK_API_KEY;
-  if (deepseekKey) {
-    const result = await callDeepSeek(system, prompt, deepseekKey);
-    if (result) return result;
-  }
-
-  // 3. Fallback: OpenAI (gpt-4o-mini ~ $0.0003/call)
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (openaiKey) {
-    const result = await callOpenAI(system, prompt, openaiKey);
-    if (result) return result;
-  }
-
-  // 4. Fallback: Groq (free tier, Llama 3.3 70B, 30 RPM)
+  // 2. Groq (FREE — Llama 3.3 70B, 30 RPM)
   const groqKey = process.env.GROQ_API_KEY;
   if (groqKey) {
     const result = await callGroq(system, prompt, groqKey);
     if (result) return result;
   }
 
-  // 5. Fallback: Anthropic Claude Haiku (~$0.001/call)
+  // 3. DeepSeek (very cheap ~$0.001/call)
+  const deepseekKey = process.env.DEEPSEEK_API_KEY;
+  if (deepseekKey) {
+    const result = await callDeepSeek(system, prompt, deepseekKey);
+    if (result) return result;
+  }
+
+  // 4. OpenAI gpt-4o-mini (~$0.0003/call)
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    const result = await callOpenAI(system, prompt, openaiKey);
+    if (result) return result;
+  }
+
+  // 5. Anthropic Claude Haiku (~$0.001/call)
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (anthropicKey) {
     const result = await callAnthropic(system, prompt, anthropicKey);
@@ -356,12 +309,12 @@ async function callAI(system, prompt) {
   }
 
   // All providers failed
-  const err = new Error('All AI providers unavailable (Gemini overloaded, DeepSeek failed, OpenAI failed, Groq failed) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ will retry next cron cycle');
+  const err = new Error('All AI providers unavailable — will retry next cron cycle');
   err.isRateLimit = true;
   throw err;
 }
 
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Send email via configured provider ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ── Send email via configured provider ──
 async function sendEmail({ to, subject, body, provider, apiKey, from }) {
   if (provider === 'gmail' && apiKey) {
     const nodemailer = (await import('nodemailer')).default;
@@ -416,16 +369,16 @@ async function sendEmail({ to, subject, body, provider, apiKey, from }) {
   throw new Error('No email provider configured');
 }
 
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Build system prompt for agent ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ── Build system prompt for agent ──
 function buildSystemPrompt(agent) {
-  return `You are ${agent.name}, ${agent.title || 'AI Agent'} at Kapturise ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Dubai's first and largest on-demand platform for photographers, videographers, and content creators. You work professionally and efficiently. Your role: ${agent.role}. Always be specific, use real company details, and follow instructions precisely.`;
+  return `You are ${agent.name}, ${agent.title || 'AI Agent'} at Kapturise — Dubai's first and largest on-demand platform for photographers, videographers, and content creators. You work professionally and efficiently. Your role: ${agent.role}. Always be specific, use real company details, and follow instructions precisely.`;
 }
 
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ══════════════════════════════════════════
 // MAIN CRON HANDLER
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ══════════════════════════════════════════
 export async function GET(request) {
-  // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Auth check disabled for free tier testing ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+  // ── Auth check disabled for free tier testing ──
   // To re-enable: uncomment the block below and set CRON_SECRET env var
   // const cronSecret = process.env.CRON_SECRET;
   // if (cronSecret) {
@@ -438,7 +391,7 @@ export async function GET(request) {
   //   }
   // }
 
-  // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Throttle: run AI every other cron invocation (~10 min at 5-min intervals) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+  // ── Throttle: run AI every other cron invocation (~10 min at 5-min intervals) ──
   // With DeepSeek fallback, we can run much more frequently (~144 runs/day)
   // Gemini is tried first (free), DeepSeek catches overflow
   // Use ?force=true to bypass throttle for manual testing
@@ -446,7 +399,6 @@ export async function GET(request) {
   const minuteOfDay = now.getUTCHours() * 60 + now.getUTCMinutes();
   const url = new URL(request.url);
   const forceRun = url.searchParams.get('force') === 'true';
-  const taskOverride = url.searchParams.get('task');
   // Run if: forced OR every other 5-min window (skip alternating invocations)
   const shouldRun = forceRun || (minuteOfDay % 10 < 5);
   if (!shouldRun) {
@@ -465,7 +417,7 @@ export async function GET(request) {
   }
 
   try {
-    // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 1. Load agents ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ seed defaults if table is empty ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+    // ── 1. Load agents — seed defaults if table is empty ──
     let { data: agents, error: agErr } = await supabase
       .from('agents')
       .select('*')
@@ -487,26 +439,29 @@ export async function GET(request) {
       agents = defaultAgents;
     }
 
-    // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 2. Load leads ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+    // ── 2. Load leads ──
     const { data: leads, error: ldErr } = await supabase.from('leads').select('*');
     if (ldErr) throw new Error(`Failed to load leads: ${ldErr.message}`);
     const allLeads = leads || [];
 
-    // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 3. Load pricing ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+    // ── 3. Load pricing ──
     const { data: pricingRows } = await supabase.from('pricing').select('*');
     const pricingStr = (pricingRows || []).map(p => `${p.name}: AED ${p.base_price || 'varies'}`).join(', ');
 
-    // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 4. Determine which agent + task to run ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+    // ── 4. Determine which agent + task to run ──
+    // Support URL overrides: ?agent=cron-sales-1&task=outreach
+    const agentOverride = url.searchParams.get('agent');
+    const taskOverride = url.searchParams.get('task');
+
     // Use minute-of-day to rotate through agents (1 agent per cron invocation)
     // (now and minuteOfDay already declared above in throttle check)
-    // Allow ?agent=ID override for testing specific agents
-    const forceAgent = url.searchParams.get('agent');
-    const agentIndex = forceAgent ? agents.findIndex(a => a.id === forceAgent) : (minuteOfDay % agents.length);
-    const agent = agents[agentIndex >= 0 ? agentIndex : 0];
+    const agentIndex = minuteOfDay % agents.length;
+    const agent = agentOverride
+      ? (agents.find(a => a.id === agentOverride) || agents[agentIndex])
+      : agents[agentIndex];
 
     // Determine role bucket
-    const role = agent.id === 'cron-expo-1' ? 'expo'
-      : (agent.role === 'marketing' || agent.role === 'content') ? 'marketing'
+    const role = (agent.role === 'marketing' || agent.role === 'content') ? 'marketing'
       : agent.role === 'account' ? 'account'
       : agent.role === 'analytics' ? 'analytics'
       : agent.role === 'investor' ? 'investor'
@@ -521,44 +476,42 @@ export async function GET(request) {
     const inds = cfg.targeting?.industries?.join(', ') || 'various industries';
     const locs = cfg.targeting?.locations?.join(', ') || 'Dubai, UAE';
 
-    // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 5. Build prompt based on task type ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+    // ── 5. Build prompt based on task type ──
     let prompt, label;
     const agentLeads = allLeads.filter(l =>
-        l.assigned_to === agent.id || l.assigned_to === agent.name
-      );
+      l.assigned_to === agent.id || l.assigned_to === agent.name
+    );
 
-      // Debug mode: return diagnostic info
-      if (url.searchParams.get('debug') === 'true') {
-        const sampleLeads = agentLeads.slice(0, 5).map(l => ({ name: l.name, stage: l.stage, email: l.email || '', assigned_to: l.assigned_to }));
-        const allAssignedValues = [...new Set(allLeads.map(l => l.assigned_to).filter(Boolean))];
-        return Response.json({
-          debug: true,
-          agent: { id: agent.id, name: agent.name, role },
-          totalLeadsInDB: allLeads.length,
-          agentLeadsCount: agentLeads.length,
-          sampleLeads,
-          allAssignedToValues: allAssignedValues.slice(0, 20),
-          allAgentIds: agents.map(a => a.id),
-        });
-      }
+    // Debug mode: return internal state for troubleshooting
+    if (url.searchParams.get('debug') === 'true') {
+      const sampleLeads = agentLeads.slice(0, 5).map(l => ({ name: l.name, stage: l.stage, email: l.email || '', assigned_to: l.assigned_to }));
+      const allAssignedValues = [...new Set(allLeads.map(l => l.assigned_to).filter(Boolean))];
+      return Response.json({
+        debug: true,
+        agent: { id: agent.id, name: agent.name, role },
+        totalLeadsInDB: allLeads.length,
+        agentLeadsCount: agentLeads.length,
+        sampleLeads,
+        allAssignedToValues: allAssignedValues.slice(0, 20),
+        allAgentIds: agents.map(a => a.id),
+      });
+    }
 
-
-    // ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Cross-agent dedup: build exclusion list of ALL existing lead names ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
+    // ── Cross-agent dedup: build exclusion list of ALL existing lead names ──
     const existingLeadNames = allLeads.map(l => l.name).filter(Boolean);
     const exclusionSnippet = existingLeadNames.length > 0
-      ? '\n\nIMPORTANT ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ DO NOT suggest any of these companies (already in our CRM):\n' + existingLeadNames.slice(0, 40).join(', ') + '\nFind completely NEW companies not on this list.\n'
+      ? `\n\nIMPORTANT — DO NOT suggest any of these companies (already in our CRM):\n${existingLeadNames.slice(0, 40).join(', ')}\nFind completely NEW companies not on this list.\n`
       : '';
 
-    // ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Cross-agent industry guard: list other agents' industries so AI avoids overlap ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
+    // ── Cross-agent industry guard: list other agents' industries so AI avoids overlap ──
     const otherAgents = agents.filter(a => a.id !== agent.id && (a.role === 'sales' || a.role === agent.role));
     const industryGuard = otherAgents.length > 0
-      ? '\nNote: Other team members are handling these industries ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ STAY IN YOUR LANE and only prospect ' + inds + ':\n' + otherAgents.map(a => '- ' + a.name + ': ' + (a.config?.targeting?.industries || []).join(', ')).join('\n') + '\n'
+      ? `\nNote: Other team members are handling these industries — STAY IN YOUR LANE and only prospect ${inds}:\n${otherAgents.map(a => `- ${a.name}: ${(a.config?.targeting?.industries || []).join(', ')}`).join('\n')}\n`
       : '';
 
     // Rotate prospecting sources for variety
     const prospectSources = [
       { source: 'google-maps', label: 'Google Maps' },
-      { source: 'apollo', label: 'Apollo.io Database' },
       { source: 'exhibitions', label: 'Exhibition Events' },
       { source: 'general', label: 'Industry Research' },
     ];
@@ -567,53 +520,19 @@ export async function GET(request) {
 
     // Exhibition venues in UAE for event-based prospecting
     const EXHIBITION_VENUES = [
-      'Dubai World Trade Centre (DWTC) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Sheikh Zayed Road, Dubai',
-      'Abu Dhabi National Exhibition Centre (ADNEC) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Khaleej Al Arabi St, Abu Dhabi',
-      'Expo City Dubai ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Dubai South',
-      'Sharjah Expo Centre ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Al Taawun, Sharjah',
+      'Dubai World Trade Centre (DWTC) — Sheikh Zayed Road, Dubai',
+      'Abu Dhabi National Exhibition Centre (ADNEC) — Khaleej Al Arabi St, Abu Dhabi',
+      'Expo City Dubai — Dubai South',
+      'Sharjah Expo Centre — Al Taawun, Sharjah',
       'Dubai International Convention and Exhibition Centre (DICEC)',
-      'Madinat Jumeirah Conference Centre ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Dubai',
-      'Meydan Racecourse & Events ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Nad Al Sheba, Dubai',
-      'Festival Arena by InterContinental ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Dubai Festival City',
-      'Atlantis The Palm ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Events & Conferences',
-      'Coca-Cola Arena ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ City Walk, Dubai',
+      'Madinat Jumeirah Conference Centre — Dubai',
+      'Meydan Racecourse & Events — Nad Al Sheba, Dubai',
+      'Festival Arena by InterContinental — Dubai Festival City',
+      'Atlantis The Palm — Events & Conferences',
+      'Coca-Cola Arena — City Walk, Dubai',
     ];
 
-
-    // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Enhanced exhibitor scraping for expo agent ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-    if (agent.id === 'cron-expo-1' && tType === 'event-scout') {
-      const expoVenues = agent.config?.venues || [
-        'Dubai World Trade Centre (DWTC)',
-        'ADNEC Abu Dhabi',
-        'Expo City Dubai',
-        'Sharjah Expo Centre',
-      ];
-      const venueIdx = minuteOfDay % expoVenues.length;
-      const targetVenue = expoVenues[venueIdx];
-      const currentMonth = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      const nextMonth = new Date(Date.now() + 30*86400000).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      
-      prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai's premier creative media agency).
-
-TASK: You are an exhibition scout. Research REAL upcoming events, trade shows, and exhibitions at ${targetVenue} happening in ${currentMonth} or ${nextMonth}.
-
-For each event you find, identify 3 REAL exhibiting companies that would need content creation services. These are companies that:
-- Have booked exhibition booths and need booth photography/videography
-- Are launching products at the event and need product photography
-- Are hosting panels/keynotes and need speaker recording
-- Need social media content from their participation
-- Want post-event highlight reels and recap videos
-
-CRITICAL: Find REAL companies. Use your knowledge of businesses that typically exhibit at ${targetVenue}. Think about industry-specific trade shows: GITEX (tech), Gulfood (F&B), Arabian Travel Market (tourism), Beautyworld (beauty), The Big 5 (construction), WETEX (energy), Arab Health (healthcare).
-${exclusionSnippet}
-For EACH company, provide: company name, the specific event/exhibition, contact person (Events/Marketing Manager), industry, email (events@ or marketing@ format), Instagram handle, estimated project value in AED (3000-8000), and exactly what content they need from Kapturise.
-
-Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Events Marketing Manager","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":5500,"suggestedService":"Event Coverage","website":"...","notes":"Exhibiting at ${targetVenue} ÃÂ¢ÃÂÃÂ [event name] in [month] ÃÂ¢ÃÂÃÂ needs [specific deliverable]"}]`;
-      label = `Expo-scouting exhibitors at ${targetVenue} for ${currentMonth}`;
-    }
-
-    var skipAI = false;
-        if (tType === 'prospect') {
+    if (tType === 'prospect') {
       if (prospectSource.source === 'google-maps') {
         prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai creative media agency).
 
@@ -631,7 +550,7 @@ Find 3 REAL businesses that actually exist on Google Maps. Prioritize:
 For EACH, provide: company name, Google Maps area/neighborhood, contact person (realistic title), industry, likely email (info@company.com format), Instagram handle, estimated project value in AED (2000-8000), and why they need Kapturise services right now.
 ${exclusionSnippet}${industryGuard}
 Services: ${pricingStr}
-Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":3500,"suggestedService":"...","website":"...","notes":"Found on Google Maps in [area] ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ [reason they need content]"}]`;
+Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":3500,"suggestedService":"...","website":"...","notes":"Found on Google Maps in [area] — [reason they need content]"}]`;
         label = `Scouting Google Maps in ${locs} for ${inds.split(',')[0]}`;
 
       } else if (prospectSource.source === 'exhibitions') {
@@ -655,24 +574,13 @@ Find 3 REAL companies that are likely exhibiting, sponsoring, or organizing even
 For EACH, provide: company name, the event/exhibition they're connected to, contact person (Marketing Manager or Events Coordinator), industry, likely email, Instagram handle, estimated project value in AED (3000-8000 for event coverage), and which Kapturise service fits.
 ${exclusionSnippet}${industryGuard}
 Services: ${pricingStr}
-Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":5500,"suggestedService":"Event Coverage","website":"...","notes":"Exhibiting at [venue/event] ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ needs [specific content type]"}]`;
+Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":5500,"suggestedService":"Event Coverage","website":"...","notes":"Exhibiting at [venue/event] — needs [specific content type]"}]`;
         label = `Scouting exhibition events for prospects`;
 
-      } else if (prospectSource.source === 'apollo') {
-            var apolloResult = await apolloProspect(agent, cfg.targeting && cfg.targeting.industries, cfg.targeting && cfg.targeting.locations, existingLeadNames.map(function(n){return n.toLowerCase()}));
-            label = apolloResult.msg;
-            if (apolloResult.leads.length > 0) {
-              var newApolloLeads = apolloResult.leads.filter(function(al) {
-                return existingLeadNames.indexOf((al.name || '').toLowerCase()) === -1;
-              });
-              if (newApolloLeads.length > 0) {
-                await supabase.from('leads').insert(newApolloLeads);
-                label = label + ' - inserted ' + newApolloLeads.length;
-              }
-            }
-            skipAI = true;
-          } else {
-        prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai creative media agency). Find 3 NEW REAL business prospects in ${locs} in ${inds}. These must be REAL companies that actually exist ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ use your knowledge of businesses in Dubai/UAE. For EACH, provide: company name, contact person (use a realistic title like Marketing Manager, not a made-up name), title, industry, their likely email format (e.g. info@company.com), Instagram handle if known, LinkedIn URL if known, estimated project value in AED (use realistic Kapturise pricing: 2000-5000 for single shoots, 3000-8000 for packages), and suggested Kapturise service.\n${exclusionSnippet}${industryGuard}\nServices: ${pricingStr}\nRespond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":3500,"suggestedService":"...","notes":"..."}]`;
+      } else {
+        prompt = `You are ${agent.name}, ${agent.title} at Kapturise (Dubai creative media agency). Find 3 NEW REAL business prospects in ${locs} in ${inds}. These must be REAL companies that actually exist — use your knowledge of businesses in Dubai/UAE. For EACH, provide: company name, contact person (use a realistic title like Marketing Manager, not a made-up name), title, industry, their likely email format (e.g. info@company.com), Instagram handle if known, LinkedIn URL if known, estimated project value in AED (use realistic Kapturise pricing: 2000-5000 for single shoots, 3000-8000 for packages), and suggested Kapturise service.
+${exclusionSnippet}${industryGuard}
+Services: ${pricingStr}\nRespond ONLY with a JSON array: [{"company":"...","contact":"...","title":"...","industry":"...","email":"...","instagram":"...","linkedin":"...","estimatedValue":3500,"suggestedService":"...","notes":"..."}]`;
         label = `Finding 3 prospects in ${inds.split(',')[0]}`;
       }
 
@@ -704,51 +612,29 @@ These companies need EVENT COVERAGE services from Kapturise:
 
 For EACH company, provide: company name, the specific event/exhibition they're at, contact person (Events Coordinator or Marketing Manager), industry, email (use info@ or events@ format), Instagram, estimated value (AED 3,000-8,000), and what specific content they need.
 ${exclusionSnippet}
-Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Events Coordinator","industry":"Events","email":"...","instagram":"...","linkedin":"...","estimatedValue":5500,"suggestedService":"Event Coverage","website":"...","notes":"Exhibiting at ${venue.name} ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ [event name] ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ needs event photography + highlight reel"}]`;
+Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Events Coordinator","industry":"Events","email":"...","instagram":"...","linkedin":"...","estimatedValue":5500,"suggestedService":"Event Coverage","website":"...","notes":"Exhibiting at ${venue.name} — [event name] — needs event photography + highlight reel"}]`;
       label = `Scouting exhibitors at ${venue.name}`;
 
     } else if (tType === 'outreach') {
-      // Batch outreach: send approved templates to up to 3 leads per cycle
-      var eligibleLeads = agentLeads.filter(function(l) {
-        return ['Research', 'Warm-Up'].includes(l.stage) ||
-          (l.stage === 'First Contact' && !(l.logs || []).some(function(lg) { return lg.type === 'email'; }));
-      });
-      var gmailPass = process.env.GMAIL_APP_PASSWORD;
-      var gmailUser = process.env.GMAIL_EMAIL || 'contact@kapturise.com';
-      var emailableLeads = eligibleLeads.filter(function(l) { return l.email; }).slice(0, 5);
-      var sentEmails = [];
-      for (var li = 0; li < emailableLeads.length; li++) {
-        var currentLead = emailableLeads[li];
-        try {
-          var leadIndustry = (currentLead.industry || '').toLowerCase();
-          var isInvestor = role === 'investor' || leadIndustry.includes('invest') || leadIndustry.includes('venture') || leadIndustry.includes('capital');
-          var emailSubject, emailBody;
-          if (isInvestor) {
-            emailSubject = 'Investment Opportunity: AI-Powered Creative Studio in Dubai';
-            emailBody = 'Dear ' + (currentLead.contact_name || currentLead.name) + ',\n\nI am reaching out regarding an investment opportunity in Kapturise, a Dubai-based AI-powered creative studio.\n\nWe combine AI technology with professional photography and videography to deliver premium content at scale for businesses across the UAE.\n\nKey highlights:\n- AI-driven workflow reducing production time by 60%\n- Growing client base in real estate, hospitality, and F&B\n- Monthly recurring revenue model\n- Based in Dubai with regional expansion planned\n\nI would welcome the opportunity to share our investor deck and discuss how this aligns with your portfolio.\n\nBest regards,\n' + agent.name + '\nKapturise';
-          } else {
-            var pricing = getIndustryPricing(leadIndustry);
-            var svcName = pricing.service || 'Creative Content';
-            emailSubject = svcName + ' for ' + currentLead.name + ' - Kapturise';
-            emailBody = 'Hi ' + (currentLead.contact_name || currentLead.name) + ',\n\nI noticed ' + currentLead.name + ' could benefit from professional ' + svcName.toLowerCase() + ' services.\n\nAt Kapturise, we specialize in AI-enhanced visual content for businesses in ' + (currentLead.industry || 'your industry') + '. Our ' + svcName.toLowerCase() + ' packages start from AED ' + (pricing.price || '2,000') + '.\n\nWould you be open to a quick call this week to discuss how we can help elevate your brand visuals?\n\nBest regards,\n' + agent.name + '\nKapturise\ncontact@kapturise.com';
-          }
-          if (gmailPass) {
-            var nodemailer = await import('nodemailer');
-            var transporter = nodemailer.default.createTransport({ service: 'gmail', auth: { user: gmailUser, pass: gmailPass } });
-            await transporter.sendMail({ from: gmailUser, to: currentLead.email, subject: emailSubject, text: emailBody });
-          }
-          var updatedLogs = (currentLead.logs || []).concat([{ type: 'email', date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), msg: 'Outreach email sent: ' + emailSubject, summary: emailSubject, transcript: 'To: ' + currentLead.email + '\nSubject: ' + emailSubject + '\n\n' + emailBody }]);
-          var newStage = currentLead.stage === 'Research' ? 'First Contact' : currentLead.stage;
-          await supabase.from('leads').update({ logs: updatedLogs, stage: newStage, last_contacted: new Date().toISOString() }).eq('id', currentLead.id);
-          sentEmails.push('Emailed ' + currentLead.name + ' (' + currentLead.email + ')');
-        } catch (emailErr) {
-          sentEmails.push('Failed: ' + currentLead.name + ' - ' + emailErr.message);
-        }
+      const eligibleLeads = agentLeads.filter(l =>
+        ['Research', 'Warm-Up'].includes(l.stage) ||
+        (l.stage === 'First Contact' && !(l.logs || []).some(lg => lg.type === 'email'))
+      );
+      if (eligibleLeads.length > 0) {
+        const lead = eligibleLeads[Math.floor(Math.random() * eligibleLeads.length)];
+        const indTemplate = getTemplateForIndustry(lead.industry || '');
+        const rendered = renderTemplate(indTemplate, {
+          contactName: lead.contact_name || 'there',
+          company: lead.name || 'your company',
+        });
+        prompt = `You are ${agent.name} at Kapturise. Write personalized outreach for:\n\nCompany: ${lead.name}\nContact: ${lead.contact_name} (${lead.contact_title})\nIndustry: ${lead.industry}\nNotes: ${lead.notes || 'none'}\nWebsite: ${lead.website || 'not provided'}\n\nHere is the APPROVED email template for this industry. Use this as the base — personalize it with the prospect's specific details but keep the pricing, services, portfolio links, and contact info exactly as shown:\n\n--- APPROVED TEMPLATE ---\nSubject: ${rendered.subject}\n\n${rendered.body}\n--- END TEMPLATE ---\n\nNow write:\n1. EMAIL: Personalize the template above for ${lead.name}. Keep the pricing and services EXACT. Add 1-2 personalized sentences about their specific business.\n2. INSTAGRAM DM: Under 3 sentences, casual, reference their business by name, mention the most relevant service and starting price.\n3. LINKEDIN NOTE: Under 300 chars, professional tone, mention relevant service.\n\nIMPORTANT RULES:\n- Use EXACT pricing from the template (do NOT make up prices)\n- Include the company profile PDF link: https://kapturise-ai-agents.vercel.app/Kapturise-Company-Profile.pdf\n- Include portfolio video links from the template\n- Keep email under 200 words\n- Professional Dubai tone (friendly, direct, value-focused)\n- CTA: contact@kapturise.com / 055-913-7354`;
+        label = `Writing ${indTemplate.name} outreach for ${lead.name}`;
+      } else {
+        const coldTemplate = getTemplateForIndustry(inds.split(',')[0]?.trim() || '');
+        prompt = `You are ${agent.name} at Kapturise. Write 3 cold outreach templates for ${inds} businesses in ${locs}.\n\nUse this approved template style and pricing:\nTemplate: ${coldTemplate.name}\nSubject: ${coldTemplate.subject}\n\nFor each, include: email + Instagram DM + LinkedIn note.\nUse EXACT pricing from Kapturise templates. Include company profile link: https://kapturise-ai-agents.vercel.app/Kapturise-Company-Profile.pdf`;
+        label = `Creating ${coldTemplate.name} outreach templates`;
       }
-      if (emailableLeads.length === 0) {
-        sentEmails.push('No leads with email addresses ready for outreach');
-      }
-      return Response.json({ ok: true, agent: agent.name, role: role, task: 'outreach', label: 'Batch outreach: ' + sentEmails.length + ' processed', actions: sentEmails, timestamp: new Date().toISOString() });
+
     } else if (tType === 'follow-up') {
       const nowMs = Date.now();
       const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
@@ -769,7 +655,7 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
         const indTemplate = getTemplateForIndustry(lead.industry || '');
         const isFirstFollowUp = lead.stage === 'First Contact';
         const followUpContext = isFirstFollowUp
-          ? `\n\nThis is a FIRST FOLLOW-UP ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ they were sent an initial outreach email but haven't replied yet. Be warm, reference the previous email, and add a new angle or value proposition.`
+          ? `\n\nThis is a FIRST FOLLOW-UP — they were sent an initial outreach email but haven't replied yet. Be warm, reference the previous email, and add a new angle or value proposition.`
           : '';
         prompt = `You are ${agent.name} at Kapturise. Write a follow-up for:\n${lead.name} (${lead.contact_name}), Stage: ${lead.stage}, Value: AED ${lead.value}, Industry: ${lead.industry || 'general'}\nLast interaction: ${lead.logs?.[lead.logs.length - 1]?.msg || 'none'}\n\nUse pricing from the ${indTemplate.name} template:\n${indTemplate.body?.slice(0, 500) || 'Standard Kapturise pricing'}\n\nWrite a warm follow-up email that moves the deal forward. Reference specific services and pricing from the template above. Include the company profile link: https://kapturise-ai-agents.vercel.app/Kapturise-Company-Profile.pdf${followUpContext}`;
         label = `Following up with ${lead.name}`;
@@ -807,25 +693,26 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
       label = 'Pipeline analysis';
     }
 
-    // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 6. Call AI ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+    // ── 6. Call AI ──
     const systemPrompt = buildSystemPrompt(agent);
-    const result = skipAI ? (label || "Apollo done") : await callAI(systemPrompt, prompt);
+    const result = await callAI(systemPrompt, prompt);
 
     const actions = []; // Track what happened
 
-    // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 7. Process results ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+    // ── 7. Process results ──
 
     // 7a. Parse prospects into new leads (prospect + event-scout both create leads)
-    if ((tType === 'prospect' || tType === 'event-scout') && !skipAI) {
+    if (tType === 'prospect' || tType === 'event-scout') {
       const newLeads = parseProspects(result, agent.id, agent);
       if (newLeads.length > 0) {
-        // Check for duplicates ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ fuzzy match to catch slight name variations
-        const existingNamesArr = allLeads.map(l => (l.name || '').toLowerCase().trim());
+        // Check for duplicates — fuzzy match to catch slight name variations
+        const existingNames = allLeads.map(l => (l.name || '').toLowerCase().trim());
         const normalize = (n) => (n || '').toLowerCase().trim().replace(/\b(llc|fz|fze|fzc|dmcc|co|inc|ltd|group|dubai|abu dhabi|uae)\b/g, '').replace(/[^a-z0-9]/g, '');
-        const existingNorm = new Set(existingNamesArr.map(normalize));
+        const existingNorm = new Set(existingNames.map(normalize));
         const unique = newLeads.filter(nl => {
           const norm = normalize(nl.name);
           if (existingNorm.has(norm)) return false;
+          // Also check if the normalized name is a substring of any existing (or vice versa)
           for (const en of existingNorm) {
             if (en && norm && (en.includes(norm) || norm.includes(en)) && Math.min(en.length, norm.length) > 4) return false;
           }
@@ -863,7 +750,99 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
       }
     }
 
-    // 7c. Send actual email if outreach
+    // 7c. Send actual emails if outreach — BATCH up to 3 leads per cycle
+    if (tType === 'outreach') {
+      const eligibleLeads = agentLeads.filter(l =>
+        ['Research', 'Warm-Up'].includes(l.stage) ||
+        (l.stage === 'First Contact' && !(l.logs || []).some(lg => lg.type === 'email'))
+      );
+
+      // Email provider from env vars
+      const gmailPass = process.env.GMAIL_APP_PASSWORD;
+      const gmailEmail = process.env.GMAIL_EMAIL || 'contact@kapturise.com';
+      const emailProvider = gmailPass ? 'gmail' : process.env.EMAIL_PROVIDER;
+      const emailApiKey = gmailPass || process.env.EMAIL_API_KEY;
+      const emailFrom = gmailEmail || process.env.EMAIL_FROM || 'contact@kapturise.com';
+
+      // Pick up to 5 leads with valid emails per outreach cycle
+      const emailableLeads = eligibleLeads.filter(l => l.email).slice(0, 5);
+
+      for (const lead of emailableLeads) {
+        const leadEmail = lead.email;
+        if (!emailProvider || !emailApiKey) {
+          actions.push(`Email skipped for ${lead.name}: no GMAIL_APP_PASSWORD or EMAIL_PROVIDER env var set`);
+          break;
+        }
+        try {
+          // ALWAYS use HTML template — never AI-generated text
+          const indTemplate = getTemplateForIndustry(lead.industry || '');
+          console.log(`[EMAIL] Template: ${indTemplate.name} for industry: ${lead.industry || 'none'}`);
+          const rendered = renderTemplate(indTemplate, {
+            contactName: lead.contact_name || 'there',
+            company: lead.name || 'your company',
+          });
+          let subject = rendered.subject;
+          let body = rendered.body;
+          // Replace agent placeholders
+          const agentDisplayName = agent.name || 'Kapturise Team';
+          const agentDisplayTitle = agent.title || 'Sales Representative';
+          body = body.replace(/\{\{agentName\}\}/g, agentDisplayName)
+            .replace(/\{\{agentTitle\}\}/g, agentDisplayTitle);
+          subject = subject.replace(/\{\{agentName\}\}/g, agentDisplayName)
+            .replace(/\{\{agentTitle\}\}/g, agentDisplayTitle);
+
+          // Safety: ensure body contains HTML (template), not plain text
+          if (!body.includes('<div') && !body.includes('<table')) {
+            console.error(`[EMAIL] WARNING: Body missing HTML for ${lead.name}, using fallback template`);
+            const fallback = getTemplateForIndustry('');
+            const fb = renderTemplate(fallback, { contactName: lead.contact_name || 'there', company: lead.name || 'your company' });
+            body = fb.body.replace(/\{\{agentName\}\}/g, agentDisplayName).replace(/\{\{agentTitle\}\}/g, agentDisplayTitle);
+            subject = fb.subject.replace(/\{\{agentName\}\}/g, agentDisplayName).replace(/\{\{agentTitle\}\}/g, agentDisplayTitle);
+          }
+
+          console.log(`[EMAIL] Sending to ${leadEmail}, subject: ${subject}, body length: ${body.length}`);
+
+          const emailResult = await sendEmail({
+            to: leadEmail, subject, body,
+            provider: emailProvider, apiKey: emailApiKey, from: emailFrom,
+          });
+
+          if (emailResult.success) {
+            console.log(`[EMAIL] SUCCESS: ${leadEmail}, messageId: ${emailResult.id}`);
+            const emailLog = {
+              type: 'email',
+              date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+              msg: `Email sent to ${leadEmail} — ${indTemplate.name} template`,
+              summary: `Email: ${subject}`,
+              transcript: `To: ${leadEmail}\nSubject: ${subject}\nTemplate: ${indTemplate.name}\n\n${body}`,
+            };
+            const updatedLogs = [...(lead.logs || []), emailLog];
+            const newStage = lead.stage === 'Research' ? 'First Contact' : lead.stage;
+            await supabase.from('leads')
+              .update({ logs: updatedLogs, stage: newStage })
+              .eq('id', lead.id);
+            actions.push(`Emailed ${lead.name} (${leadEmail}) — ${indTemplate.name} template`);
+          }
+        } catch (emailErr) {
+          const errLog = {
+            type: 'note',
+            date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            msg: `Server email error: ${emailErr.message}`,
+            summary: 'Email send error',
+          };
+          const updatedLogs = [...(lead.logs || []), errLog];
+          await supabase.from('leads').update({ logs: updatedLogs }).eq('id', lead.id);
+          actions.push(`Email failed for ${lead.name}: ${emailErr.message}`);
+        }
+      }
+
+      if (emailableLeads.length === 0 && eligibleLeads.length > 0) {
+        actions.push(`${eligibleLeads.length} eligible leads but none have email addresses`);
+      } else if (eligibleLeads.length === 0) {
+        actions.push(`No eligible leads for outreach (all already emailed or wrong stage)`);
+      }
+    }
+
     // 7d. Escalation detection
     if (result && ['outreach', 'follow-up', 'dm', 'connect', 'call', 'qualify'].includes(tType)) {
       const lower = result.toLowerCase();
@@ -894,7 +873,7 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
       }
     }
 
-    // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ 8. Log to activity_logs ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+    // ── 8. Log to activity_logs ──
     await supabase.from('activity_logs').insert({
       agent_id: agent.id,
       message: `[CRON] ${label} | ${actions.join(' | ') || 'completed'}`,
@@ -922,7 +901,7 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
       }
     } catch (_) { /* ignore logging errors */ }
 
-    // Rate-limit ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ return 200 so cron-job.org doesn't flag failures
+    // Rate-limit → return 200 so cron-job.org doesn't flag failures
     if (error.isRateLimit) {
       return Response.json({
         ok: true,
