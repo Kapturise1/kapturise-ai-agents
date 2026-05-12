@@ -764,8 +764,19 @@ Respond ONLY with a JSON array: [{"company":"...","contact":"...","title":"Event
       const emailApiKey = gmailPass || process.env.EMAIL_API_KEY;
       const emailFrom = gmailEmail || process.env.EMAIL_FROM || 'contact@kapturise.com';
 
-      // Pick up to 5 leads with valid emails per outreach cycle
-      const emailableLeads = eligibleLeads.filter(l => l.email).slice(0, 5);
+      // Skip generic/catch-all addresses that always bounce
+      const BOUNCE_PREFIXES = ['info@','events@','marketing@','support@','hello@','sales@','contact@','admin@','office@','hr@','careers@','jobs@','noreply@','no-reply@','webmaster@','enquiries@','general@','reception@','media@','press@','feedback@'];
+      const emailableLeads = eligibleLeads.filter(l => {
+        if (!l.email) return false;
+        const lc = l.email.toLowerCase().trim();
+        if (BOUNCE_PREFIXES.some(p => lc.startsWith(p))) {
+          console.log('[SKIP] Generic address: ' + l.email + ' for ' + l.name);
+          actions.push('Skipped generic address ' + l.email + ' for ' + l.name);
+          return false;
+        }
+        if (!lc.includes('@') || !lc.includes('.')) return false;
+        return true;
+      }).slice(0, 5);
 
       for (const lead of emailableLeads) {
         const leadEmail = lead.email;
